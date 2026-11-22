@@ -179,19 +179,32 @@ fn main() {
         if sys.cpu.available_threads < sys.cpu.logical_cores {
             println!("  note: only {} of {} threads are available to this process (VM/container limit?)", sys.cpu.available_threads, sys.cpu.logical_cores);
         }
+        let mut clocks = cpu::Clocks::default();
+        let mut have_clocks = false;
+        let max_threads = *counts.iter().max().unwrap_or(&1);
         for threads in counts {
             cpu::warm_up(&seed, threads);
             print!("  {:>3} thread{:<2}", threads, if threads == 1 { "" } else { "s" });
-            for name in &plan.kernels {
-                let k = Kernel::from_name(name).unwrap_or_else(|| fail(&format!("unknown kernel {name}; please update hwbench")));
-                let test = cpu::run_test(&seed, k, threads, Duration::from_millis(plan.window_ms));
-                print!(" {}={:.0}/s", name, test.chunks_per_sec());
-                let _ = std::io::stdout().flush();
-                tests.push(test);
+            let (batch, sampled) = cpu::sample_clocks(threads, || {
+                let mut batch = Vec::new();
+                for name in &plan.kernels {
+                    let k = Kernel::from_name(name).unwrap_or_else(|| fail(&format!("unknown kernel {name}; please update hwbench")));
+                    let test = cpu::run_test(&seed, k, threads, Duration::from_millis(plan.window_ms));
+                    print!(" {}={:.0}/s", name, test.chunks_per_sec());
+                    let _ = std::io::stdout().flush();
+                    batch.push(test);
+                }
+                batch
+            });
+            if let Some((max, median)) = sampled {
+                have_clocks = true;
+                if threads == 1 { clocks.single_max_mhz = max; }
+                if threads == max_threads { clocks.all_core_mhz = median; }
             }
+            tests.extend(batch);
             println!();
         }
-        body["cpu"] = serde_json::json!({ "tests": tests });
+        body["cpu"] = if have_clocks { serde_json::json!({ "tests": tests, "clocks": clocks }) } else { serde_json::json!({ "tests": tests }) };
     }
 
     if wants("gpu") {
