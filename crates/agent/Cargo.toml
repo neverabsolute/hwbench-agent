@@ -1,0 +1,17 @@
+[package]
+name = "hwbench"
+description = "hwbench.io benchmark agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+hwbench-kernels.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "3", features = ["json"] }
+sysinfo = { version = "0.40", default-features = false, features = ["system", "disk"] }
+lexopt = "0.3"
+webbrowser = "1"
+blake3 = "1"

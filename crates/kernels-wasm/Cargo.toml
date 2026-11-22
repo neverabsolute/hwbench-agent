@@ -1,0 +1,13 @@
+[package]
+name = "hwbench-kernels-wasm"
+description = "WebAssembly build of hwbench-kernels for server-side proof verification."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+hwbench-kernels.workspace = true

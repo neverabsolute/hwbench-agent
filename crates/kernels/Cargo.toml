@@ -1,0 +1,12 @@
+[package]
+name = "hwbench-kernels"
+description = "Deterministic, seed-driven CPU workloads shared by the hwbench agent (native) and server verifier (wasm)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+blake3 = { version = "1", default-features = false }
+sha2 = { version = "0.11", default-features = false }
+miniz_oxide = { version = "0.9", default-features = false, features = ["with-alloc"] }

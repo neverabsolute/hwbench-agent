@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "status": "provisional",
+  "reference": "Intel Core i7-12700K, DDR4-3200 dual channel, Linux. 100 points = reference single-thread rate.",
+  "cpu": {
+    "kernels": ["hash", "compress", "sort", "float", "physics"],
+    "refChunksPerSec": { "hash": 200, "compress": 125, "sort": 155, "float": 108, "physics": 101 },
+    "subscores": {
+      "single": { "threads": 1 },
+      "quad": { "threads": 4 },
+      "multi": { "threads": 0 }
+    },
+    "overall": {
+      "formula": "100 * (single/100)^w.single * (quad/400)^w.quad * (multi/1200)^w.multi",
+      "weights": { "single": 0.4, "quad": 0.3, "multi": 0.3 }
+    }
+  },
+  "ram": {
+    "ref": { "readGBs": 40, "writeGBs": 30, "copyGBs": 40, "latencyNs": 80 },
+    "overall": {
+      "formula": "100 * (read/ref)^0.25 * (write/ref)^0.25 * (copy/ref)^0.25 * (refLatency/latency)^0.25"
+    }
+  }
+}
