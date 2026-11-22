@@ -49,10 +49,23 @@ pub fn collect() -> SystemInfo {
     sys.refresh_cpu_all();
     let cpus = sys.cpus();
     let first = cpus.first();
+    // Only real drives: container hosts report hundreds of overlay/bind mounts.
+    const PSEUDO_FS: [&str; 16] = [
+        "overlay", "tmpfs", "devtmpfs", "squashfs", "nsfs", "proc", "sysfs", "cgroup", "cgroup2",
+        "autofs", "fuse.lxcfs", "ramfs", "efivarfs", "nfs", "cifs", "smb3",
+    ];
+    let mut seen = std::collections::HashSet::new();
     let disks = Disks::new_with_refreshed_list()
         .map(|d| {
             d
                 .iter()
+                .filter(|d| {
+                    let fs = d.file_system().to_string_lossy().to_lowercase();
+                    !PSEUDO_FS.iter().any(|p| fs == *p || fs.starts_with("fuse.")) && d.total_space() > 0
+                })
+                // Bind mounts repeat the same device under many paths.
+                .filter(|d| seen.insert(d.name().to_string_lossy().into_owned()))
+                .take(32)
                 .map(|d| DiskInfo {
                     name: d.name().to_string_lossy().into_owned(),
                     kind: format!("{:?}", d.kind()),
