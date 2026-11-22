@@ -1,5 +1,6 @@
 mod api;
 mod cpu;
+mod gpu;
 mod ram;
 mod system;
 mod util;
@@ -9,7 +10,7 @@ use std::io::Write;
 use std::time::Duration;
 
 const DEFAULT_API: &str = "https://hwbench.io";
-const COMPONENTS: [&str; 2] = ["cpu", "ram"];
+const COMPONENTS: [&str; 3] = ["cpu", "gpu", "ram"];
 
 struct Args {
     api: String,
@@ -17,6 +18,8 @@ struct Args {
     selection: Vec<String>,
     open: bool,
     dry_run: bool,
+    gpu_index: Option<usize>,
+    list_gpus: bool,
     /// Started by double-clicking a downloaded launcher: keep the window open at the end.
     pause_at_end: bool,
 }
@@ -39,6 +42,8 @@ fn parse_args() -> Result<Args, lexopt::Error> {
         selection: vec![],
         open: true,
         dry_run: false,
+        gpu_index: None,
+        list_gpus: false,
         pause_at_end: false,
     };
     if let Some(code) = code_from_exe_name() {
@@ -52,6 +57,9 @@ fn parse_args() -> Result<Args, lexopt::Error> {
             Long("session") | Short('s') => args.session = Some(p.value()?.string()?),
             Long("cpu") => args.selection.push("cpu".into()),
             Long("ram") => args.selection.push("ram".into()),
+            Long("gpu") => args.selection.push("gpu".into()),
+            Long("gpu-index") => args.gpu_index = Some(p.value()?.parse()?),
+            Long("list-gpus") => args.list_gpus = true,
             Long("all") => args.selection.extend(COMPONENTS.iter().map(|s| s.to_string())),
             Long("no-open") => args.open = false,
             Long("dry-run") => args.dry_run = true,
@@ -62,9 +70,11 @@ fn parse_args() -> Result<Args, lexopt::Error> {
             Long("help") | Short('h') => {
                 println!(
                     "hwbench {} — https://hwbench.io\n\n\
-                     USAGE: hwbench [--session CODE] [--cpu] [--ram] [--all]\n\n\
+                     USAGE: hwbench [--session CODE] [--cpu] [--gpu] [--ram] [--all]\n\n\
                      --session CODE  use a session created on hwbench.io/run\n\
-                     --cpu, --ram    pick components (default: all)\n\
+                     --cpu, --gpu, --ram  pick components (default: all)\n\
+                     --list-gpus     show detected GPUs and exit\n\
+                     --gpu-index N   benchmark GPU N from --list-gpus (default: best)\n\
                      --no-open       don't open the results page in a browser\n\
                      --dry-run       run locally and print results, submit nothing\n\
                      --api URL       server (default {DEFAULT_API})",
@@ -89,7 +99,20 @@ fn main() {
     println!("hwbench {} · https://hwbench.io\n", env!("CARGO_PKG_VERSION"));
 
     let sys = system::collect();
+    let gpus = gpu::list_adapters();
+    if args.list_gpus {
+        for (i, (_, g)) in gpus.iter().enumerate() {
+            println!("  [{i}] {} ({}, {}, {:04x}:{:04x})", g.name, g.device_type, g.backend, g.vendor_id, g.device_id);
+        }
+        if gpus.is_empty() {
+            println!("  no GPUs found");
+        }
+        return;
+    }
     println!("  CPU   {} ({} cores / {} threads)", sys.cpu.brand, sys.cpu.physical_cores, sys.cpu.logical_cores);
+    for (_, g) in &gpus {
+        println!("  GPU   {} ({})", g.name, g.backend);
+    }
     println!("  RAM   {:.1} GiB", sys.memory.total_bytes as f64 / (1u64 << 30) as f64);
     println!("  OS    {} ({})\n", sys.os_version, sys.arch);
 
@@ -106,6 +129,7 @@ fn main() {
                 threads: vec![1, 4, 0],
                 window_ms: 1500,
             }),
+            gpu: Some(api::GpuPlan { window_ms: 2000 }),
         };
         (String::new(), challenge)
     } else {
@@ -132,6 +156,7 @@ fn main() {
         },
         "deviceId": system::device_id(&sys.cpu.brand),
         "system": &sys,
+        "gpus": gpus.iter().map(|(_, g)| g.clone()).collect::<Vec<_>>(),
     });
 
     if wants("cpu") {
@@ -156,6 +181,34 @@ fn main() {
             println!();
         }
         body["cpu"] = serde_json::json!({ "tests": tests });
+    }
+
+    if wants("gpu") {
+        let window = Duration::from_millis(challenge.gpu.as_ref().map(|g| g.window_ms).unwrap_or(2000));
+        let pick = match args.gpu_index {
+            Some(i) => gpus.get(i),
+            None => gpus.first(),
+        };
+        match pick {
+            None => {
+                println!("Skipping GPU: no usable GPU found (is a graphics driver installed?)");
+                body["gpu"] = serde_json::json!({ "error": "no_adapter" });
+            }
+            Some((adapter, report)) => {
+                print!("Benchmarking GPU: {}… ", report.name);
+                let _ = std::io::stdout().flush();
+                match gpu::run(adapter, report.clone(), window) {
+                    Ok(r) => {
+                        println!("fp32 {:.0} GFLOPS · int32 {:.0} GIOPS · bandwidth {:.0} GB/s", r.fp32_gflops, r.int32_giops, r.bandwidth_gbs);
+                        body["gpu"] = serde_json::to_value(&r).unwrap();
+                    }
+                    Err(e) => {
+                        println!("failed: {e}");
+                        body["gpu"] = serde_json::json!({ "error": e.chars().take(300).collect::<String>() });
+                    }
+                }
+            }
+        }
     }
 
     if wants("ram") {

@@ -27,6 +27,14 @@ pub struct Challenge {
     pub seed: String,
     pub selection: Vec<String>,
     pub cpu: Option<CpuPlan>,
+    #[serde(default)]
+    pub gpu: Option<GpuPlan>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuPlan {
+    pub window_ms: u64,
 }
 
 #[derive(Deserialize, Debug)]

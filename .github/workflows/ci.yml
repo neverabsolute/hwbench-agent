@@ -20,4 +20,7 @@ jobs:
       - run: cargo test --release -p hwbench-kernels
       - run: cargo build --release -p hwbench
       - run: cargo build -p hwbench-kernels-wasm --target wasm32-unknown-unknown --profile wasm
-      - run: cargo run --release -p hwbench -- --dry-run --no-open
+      - run: cargo run --release -p hwbench -- --list-gpus
+      # macOS runners have an Apple GPU (Metal); Windows has WARP (DX12 software).
+      # Linux runners have no GPU: the suite must skip cleanly there.
+      - run: cargo run --release -p hwbench -- --dry-run --no-open --all

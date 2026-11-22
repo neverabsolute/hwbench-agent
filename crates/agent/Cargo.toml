@@ -15,3 +15,5 @@ sysinfo = { version = "0.40", default-features = false, features = ["system", "d
 lexopt = "0.3"
 webbrowser = "1"
 blake3 = "1"
+wgpu = "30"
+pollster = "1"
