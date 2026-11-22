@@ -1,8 +1,8 @@
-# How hwbench scores hardware
+# Scoring methodology
 
-hwbench measures hardware and publishes the numbers. No editorial adjustments,
-no hand-tuned penalties for any brand. The formulas below are the whole method,
-and [`scoring/v1.json`](../scoring/v1.json) is the exact configuration the site uses.
+These are the formulas behind every hwbench score.
+[`scoring/v1.json`](../scoring/v1.json) holds the exact values, and the site
+reads that same file.
 
 ## CPU
 
@@ -23,11 +23,12 @@ scores 100 single-core, about 400 quad-core, and more multi-core.
 
 The headline CPU score is a weighted geometric mean of the three sub-scores,
 each divided by what the reference CPU scores (single 100, quad 400, multi-core
-1000; weights and normalizers in `scoring/v1.json`). The multi-core normalizer is
-modeled from measured thread scaling of a real 16-core CPU and cross-checked
-against public all-core ratios; it will be replaced by a measured full-thread
-i7-12700K result. The sub-scores are always shown next to it,
-so readers can apply their own weighting.
+1000; weights and normalizers in `scoring/v1.json`). The multi-core normalizer comes
+from modeling an i7-12700K's P-cores and E-cores with the per-workload thread
+scaling measured on a Ryzen 9 9950X3D (about 985); public all-core ratios between
+the two chips give about 980. A measured full-thread i7-12700K result will replace
+it. The site shows the sub-scores next to the headline score, so readers can weigh
+them differently.
 
 ## Memory
 
@@ -104,8 +105,7 @@ that reweight the *same* measured sub-scores (weights and rationale in
 | Everyday (headline score) | 15% | 15% | 25% | 15% | 15% | 15% |
 | Workstation | 25% | 25% | | | 25% | 25% |
 
-No profile weights any core count or test close to zero. Rankings can be sorted
-by any profile, and component pages show all three.
+Rankings can be sorted by any profile, and component pages show all three.
 
 ## Component scores and percentiles
 
@@ -114,24 +114,25 @@ and the full distribution. It never shows a mean, because a few broken or faked
 results can't move a median much. "Your result is in the Nth percentile" compares
 a run with every accepted result for the same model.
 
-## Keeping results honest
+## Checking results
 
-* **Proof of work:** CPU results include per-chunk digests for a server-issued
-  seed. The server re-runs a random sample of chunks and rejects mismatches.
-* **Consistency checks:** e.g. multi-core scaling impossible for the reported
-  core count, or results far outside the model's distribution (median absolute
-  deviation test). Flagged results are excluded from aggregates until a
-  moderator reviews them.
-* **Constrained environments:** runs where the OS limits available threads
-  (VMs, containers) are kept but excluded from multi-core aggregates.
+* CPU results include per-chunk digests for a seed the server issues. The server
+  re-runs a random sample of chunks and rejects runs whose digests don't match.
+* Consistency checks catch results such as multi-core scaling beyond the reported
+  core count, or results far outside the model's distribution (a median absolute
+  deviation test). Flagged results stay out of aggregates until a moderator
+  reviews them.
+* Runs where the OS limits the threads available (VMs, containers) are kept but
+  left out of multi-core aggregates.
 
-Timing can't be proven cryptographically on someone else's machine. The checks
-above are designed so that faking a result takes effort and still can't shift
-the published medians.
+Timing can't be proven cryptographically on someone else's machine. These checks
+make a fake result take effort, and because component scores are medians, a few
+fakes move them very little.
 
 ## Changes
 
 Scoring changes get a new version file, and all stored runs are rescored from
 their raw metrics. Old versions stay in this repo. Provisional reference values
-inside a version (currently the GPU reference) may be recalibrated in place;
-stored results are rescored from their raw metrics when that happens.
+inside a version (currently the CPU multi-core normalizer and the GPU and storage
+references) may be recalibrated in place; stored results are rescored from their
+raw metrics when that happens.
