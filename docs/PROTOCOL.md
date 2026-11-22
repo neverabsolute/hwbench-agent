@@ -26,6 +26,7 @@ POST /api/v1/sessions/{code}/claim
   "seed": "<64 hex chars>",
   "selection": ["cpu", "ram"],
   "cpu": { "kernels": ["hash","compress","sort","float","physics"], "threads": [1, 4, 0], "windowMs": 1500 },
+  "gpu": { "windowMs": 2000 },
   "submitBy": "…"
 }
 ```
@@ -48,10 +49,18 @@ POST /api/v1/sessions/{code}/submit
         "digests": "<chunks × 16 hex chars>" }
     ]
   },
-  "ram": { "readGBs": 61.2, "writeGBs": 40.1, "copyGBs": 35.0, "latencyNs": 82.3 }
+  "ram": { "readGBs": 61.2, "writeGBs": 40.1, "copyGBs": 35.0, "latencyNs": 82.3 },
+  "gpus": [ { "name": "NVIDIA GeForce RTX 4070", "vendorId": 4318, "deviceId": 10118, "deviceType": "DiscreteGpu", "backend": "Vulkan", … } ],
+  "gpu": {
+    "adapter": { …one entry of "gpus"… },
+    "fp32Gflops": 21400.5, "int32Giops": 11050.2, "bandwidthGBs": 452.7, "bufferBytes": 536870912,
+    "tests": { "fp32": { "opsPerDispatch": …, "bestNs": …, "medianNs": …, "runs": …, "iters": … }, … }
+  }
 }
 → 201 { "publicId": "r_8Gm2…", "url": "https://hwbench.io/run/r_8Gm2…" }
 ```
+
+A GPU that can't be benchmarked is reported as `"gpu": { "error": "…" }`.
 
 ### CPU proofs
 

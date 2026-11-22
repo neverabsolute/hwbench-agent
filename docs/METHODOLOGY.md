@@ -31,6 +31,30 @@ Multi-threaded read, write and copy bandwidth over a buffer larger than any
 CPU cache, plus dependent-load latency over a random cycle of cache lines.
 Score: geometric mean of the four ratios against the reference.
 
+## GPU
+
+Three compute shaders, run through wgpu on the platform's native API (Metal on
+macOS, DX12 on Windows, Vulkan on Linux):
+
+| Test | What it measures |
+|---|---|
+| `fp32` | 8 independent vec4 fused multiply-add chains: 64 FLOP per iteration |
+| `int32` | 4 independent multiply/add/xor/shift chains: 16 integer ops per iteration |
+| `copy` | Buffer-to-buffer copy over up to 512 MiB: read + write bandwidth |
+
+Each test first sizes its dispatch so one dispatch takes about 30 ms (long enough
+to time, far below OS GPU watchdogs), then repeats it for 2 s. The **fastest**
+dispatch counts, which filters out interference from the desktop compositor and
+background apps. Score: weighted geometric mean against reference values (weights
+in `scoring/v1.json`; GPU reference values are provisional until enough real
+results exist to calibrate them).
+
+GPU results carry **no proof of work**. A GPU does far more work per second than
+the server could re-check, so GPU results are kept honest by per-model
+distributions, hard ceilings above any shipping GPU, and the same server-side
+wall-clock bound as CPU runs. Software renderers (e.g. llvmpipe, WARP) are
+recorded but never counted.
+
 ## Component scores and percentiles
 
 A component's page shows the **median** of all accepted results for that model

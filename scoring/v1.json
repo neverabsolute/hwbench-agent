@@ -3,22 +3,65 @@
   "status": "provisional",
   "reference": "Intel Core i7-12700K, DDR4-3200 dual channel, Linux. 100 points = reference single-thread rate.",
   "cpu": {
-    "kernels": ["hash", "compress", "sort", "float", "physics"],
-    "refChunksPerSec": { "hash": 200, "compress": 125, "sort": 155, "float": 108, "physics": 101 },
+    "kernels": [
+      "hash",
+      "compress",
+      "sort",
+      "float",
+      "physics"
+    ],
+    "refChunksPerSec": {
+      "hash": 200,
+      "compress": 125,
+      "sort": 155,
+      "float": 108,
+      "physics": 101
+    },
     "subscores": {
-      "single": { "threads": 1 },
-      "quad": { "threads": 4 },
-      "multi": { "threads": 0 }
+      "single": {
+        "threads": 1
+      },
+      "quad": {
+        "threads": 4
+      },
+      "multi": {
+        "threads": 0
+      }
     },
     "overall": {
       "formula": "100 * (single/100)^w.single * (quad/400)^w.quad * (multi/1200)^w.multi",
-      "weights": { "single": 0.4, "quad": 0.3, "multi": 0.3 }
+      "weights": {
+        "single": 0.4,
+        "quad": 0.3,
+        "multi": 0.3
+      }
     }
   },
   "ram": {
-    "ref": { "readGBs": 40, "writeGBs": 30, "copyGBs": 40, "latencyNs": 80 },
+    "ref": {
+      "readGBs": 40,
+      "writeGBs": 30,
+      "copyGBs": 40,
+      "latencyNs": 80
+    },
     "overall": {
       "formula": "100 * (read/ref)^0.25 * (write/ref)^0.25 * (copy/ref)^0.25 * (refLatency/latency)^0.25"
+    }
+  },
+  "gpu": {
+    "status": "provisional: reference values will be recalibrated once real GPU results arrive",
+    "ref": {
+      "fp32Gflops": 10000,
+      "int32Giops": 5000,
+      "bandwidthGBs": 300
+    },
+    "overall": {
+      "formula": "100 * (fp32/ref)^0.4 * (int32/ref)^0.2 * (bandwidth/ref)^0.4"
+    },
+    "weights": {
+      "fp32": 0.4,
+      "int32": 0.2,
+      "bandwidth": 0.4
     }
   }
 }
