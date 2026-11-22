@@ -17,6 +17,18 @@ struct Args {
     selection: Vec<String>,
     open: bool,
     dry_run: bool,
+    /// Started by double-clicking a downloaded launcher: keep the window open at the end.
+    pause_at_end: bool,
+}
+
+/// Downloaded launchers are named `hwbench_<code>[.exe]` (browsers may append
+/// " (1)" etc.), which lets one signed binary serve every session.
+fn code_from_exe_name() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let stem = exe.file_stem()?.to_str()?;
+    let rest = stem.strip_prefix("hwbench_")?;
+    let code: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+    (code.len() >= 8 && code.len() <= 16).then_some(code)
 }
 
 fn parse_args() -> Result<Args, lexopt::Error> {
@@ -27,7 +39,12 @@ fn parse_args() -> Result<Args, lexopt::Error> {
         selection: vec![],
         open: true,
         dry_run: false,
+        pause_at_end: false,
     };
+    if let Some(code) = code_from_exe_name() {
+        args.session = Some(code);
+        args.pause_at_end = true;
+    }
     let mut p = lexopt::Parser::from_env();
     while let Some(arg) = p.next()? {
         match arg {
@@ -68,6 +85,7 @@ fn main() {
         Ok(a) => a,
         Err(e) => fail(&format!("{e} (try --help)")),
     };
+    PAUSE_AT_END.store(args.pause_at_end, std::sync::atomic::Ordering::Relaxed);
     println!("hwbench {} · https://hwbench.io\n", env!("CARGO_PKG_VERSION"));
 
     let sys = system::collect();
@@ -161,9 +179,21 @@ fn main() {
     if args.open {
         let _ = webbrowser::open(&done.url);
     }
+    pause();
+}
+
+static PAUSE_AT_END: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn pause() {
+    if PAUSE_AT_END.load(std::sync::atomic::Ordering::Relaxed) {
+        print!("Press Enter to close this window.");
+        let _ = std::io::stdout().flush();
+        let _ = std::io::stdin().read_line(&mut String::new());
+    }
 }
 
 fn fail(msg: &str) -> ! {
     eprintln!("\nerror: {msg}");
+    pause();
     std::process::exit(1);
 }
