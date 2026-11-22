@@ -338,10 +338,33 @@ mod linux {
         None
     }
 
+    /// Overlay filesystems (containers) have no block device: follow upperdir to the real one.
+    fn overlay_upper(dir: &Path) -> Option<PathBuf> {
+        let canon = std::fs::canonicalize(dir).ok()?;
+        let info = std::fs::read_to_string("/proc/self/mountinfo").ok()?;
+        let (mount, line) = info
+            .lines()
+            .filter_map(|l| Some((PathBuf::from(l.split_whitespace().nth(4)?), l)))
+            .filter(|(m, _)| canon.starts_with(m))
+            .max_by_key(|(m, _)| m.as_os_str().len())?;
+        let _ = mount;
+        let (_, after) = line.split_once(" - ")?;
+        let mut it = after.split_whitespace();
+        if it.next()? != "overlay" {
+            return None;
+        }
+        let opts = it.nth(1)?;
+        opts.split(',').find_map(|o| o.strip_prefix("upperdir=")).map(PathBuf::from)
+    }
+
     pub fn drive_info(dir: &Path) -> Option<DriveInfo> {
         let rdev = std::fs::metadata(dir).ok()?.dev();
         let (maj, min) = (libc::major(rdev), libc::minor(rdev));
-        let dev = physical(std::fs::canonicalize(format!("/sys/dev/block/{maj}:{min}")).ok()?)?;
+        let Ok(sys) = std::fs::canonicalize(format!("/sys/dev/block/{maj}:{min}")) else {
+            let upper = overlay_upper(dir)?;
+            return if upper != dir { drive_info(&upper) } else { None };
+        };
+        let dev = physical(sys)?;
         let name = dev.file_name()?.to_string_lossy().into_owned();
         let real = std::fs::canonicalize(&dev).ok()?.to_string_lossy().into_owned();
         let bus = if name.starts_with("nvme") { "nvme" } else if real.contains("/usb") { "usb" } else if name.starts_with("mmcblk") { "sd" }
