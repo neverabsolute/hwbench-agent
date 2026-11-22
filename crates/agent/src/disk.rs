@@ -144,25 +144,31 @@ fn write_at(f: &File, buf: &[u8], off: u64) -> std::io::Result<usize> {
     }
 }
 
-pub fn free_space(dir: &Path) -> Option<u64> {
+/// Canonical path as a comparable string. Windows canonicalize() adds a `\\?\`
+/// prefix that mount points don't have, and drive letters compare case-insensitively.
+fn comparable(p: &Path) -> String {
+    let s = p.to_string_lossy();
+    let s = s.strip_prefix(r"\\?\").unwrap_or(&s);
+    if cfg!(windows) { s.to_lowercase() } else { s.to_string() }
+}
+
+/// The mounted filesystem holding `dir` (longest matching mount point).
+fn disk_for<T>(dir: &Path, f: impl Fn(&sysinfo::Disk) -> T) -> Option<T> {
     let disks = sysinfo::Disks::new_with_refreshed_list().ok()?;
-    let canon = std::fs::canonicalize(dir).ok()?;
+    let canon = comparable(&std::fs::canonicalize(dir).ok()?);
     disks
         .iter()
-        .filter(|d| canon.starts_with(d.mount_point()))
+        .filter(|d| canon.starts_with(&comparable(d.mount_point())))
         .max_by_key(|d| d.mount_point().as_os_str().len())
-        .map(|d| d.available_space())
+        .map(f)
+}
+
+pub fn free_space(dir: &Path) -> Option<u64> {
+    disk_for(dir, |d| d.available_space())
 }
 
 fn filesystem_of(dir: &Path) -> String {
-    let Ok(disks) = sysinfo::Disks::new_with_refreshed_list() else { return String::new() };
-    let Ok(canon) = std::fs::canonicalize(dir) else { return String::new() };
-    disks
-        .iter()
-        .filter(|d| canon.starts_with(d.mount_point()))
-        .max_by_key(|d| d.mount_point().as_os_str().len())
-        .map(|d| d.file_system().to_string_lossy().into_owned())
-        .unwrap_or_default()
+    disk_for(dir, |d| d.file_system().to_string_lossy().into_owned()).unwrap_or_default()
 }
 
 /// Benchmark the drive holding `dir`. `window` bounds each timed test.
@@ -281,19 +287,28 @@ fn random_io(path: &Path, file_bytes: u64, seed: &[u8; 32], write: bool, qd: usi
     Ok(IoTest { bytes: ops * RND_BLOCK as u64, ops, elapsed_ns: elapsed.as_nanos() as u64, queue_depth: qd as u32 })
 }
 
+/// Hypervisor disks report a bus (often "SATA" or "NVMe") that says nothing about real hardware.
+fn is_virtual_model(model: &str) -> bool {
+    let m = model.to_lowercase();
+    ["virtual disk", "virtual_disk", "qemu", "vbox", "vmware", "virtio", "xen", "msft virtual", "amazon elastic", "google persistentdisk", "parallels"]
+        .iter()
+        .any(|v| m.contains(v))
+}
+
 /// Best-effort physical drive identification for the drive holding `dir`.
 pub fn drive_info(dir: &Path) -> DriveInfo {
     #[cfg(target_os = "linux")]
-    return linux::drive_info(dir).unwrap_or_default();
+    let mut info = linux::drive_info(dir).unwrap_or_default();
     #[cfg(target_os = "macos")]
-    return macos::drive_info(dir).unwrap_or_default();
+    let mut info = macos::drive_info(dir).unwrap_or_default();
     #[cfg(windows)]
-    return windows::drive_info(dir).unwrap_or_default();
-    #[allow(unreachable_code)]
-    {
-        let _ = dir;
-        DriveInfo::default()
+    let mut info = windows::drive_info(dir).unwrap_or_default();
+    #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+    let mut info = { let _ = dir; DriveInfo::default() };
+    if is_virtual_model(&info.model) {
+        info.bus = "virtual".into();
     }
+    info
 }
 
 #[cfg(target_os = "linux")]
@@ -347,16 +362,42 @@ mod macos {
     use super::DriveInfo;
     use std::path::Path;
 
+    fn diskutil(target: &str) -> Option<String> {
+        let out = std::process::Command::new("diskutil").args(["info", target]).output().ok()?;
+        out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    }
+
+    fn field(text: &str, k: &str) -> Option<String> {
+        text.lines().find_map(|l| l.trim().strip_prefix(k).map(|v| v.trim().to_string())).filter(|v| !v.is_empty())
+    }
+
     pub fn drive_info(dir: &Path) -> Option<DriveInfo> {
-        let out = std::process::Command::new("diskutil").arg("info").arg(dir).output().ok()?;
-        let text = String::from_utf8_lossy(&out.stdout);
-        let field = |k: &str| text.lines().find_map(|l| l.trim().strip_prefix(k).map(|v| v.trim().to_string()));
-        let protocol = field("Protocol:").unwrap_or_default().to_lowercase();
+        // `diskutil info` wants a device or mount point, not an arbitrary folder.
+        let df = std::process::Command::new("df").arg(dir).output().ok()?;
+        let dev = String::from_utf8_lossy(&df.stdout).lines().nth(1)?.split_whitespace().next()?.to_string();
+        let mut text = diskutil(&dev)?;
+        // APFS volumes live in a container; the physical SSD is its "Physical Store".
+        if let Some(store) = field(&text, "APFS Physical Store:") {
+            if let Some(t) = diskutil(&store) {
+                text = t;
+            }
+        }
+        // Partition → whole disk for the model name.
+        if field(&text, "Device / Media Name:").is_none() {
+            if let Some(whole) = field(&text, "Part of Whole:").and_then(|w| diskutil(&w)) {
+                text = whole;
+            }
+        }
+        let protocol = field(&text, "Protocol:").unwrap_or_default().to_lowercase();
         Some(DriveInfo {
-            model: field("Device / Media Name:").unwrap_or_default(),
-            bus: if protocol.contains("usb") || protocol.contains("thunderbolt") { "usb" } else if protocol.contains("pci") || protocol.contains("apple fabric") || protocol.contains("nvme") { "nvme" } else if protocol.contains("sata") { "sata" } else { "unknown" }.into(),
-            rotational: field("Solid State:").map(|v| v != "Yes"),
-            size_bytes: field("Disk Size:").and_then(|v| v.split('(').nth(1)?.split_whitespace().next()?.parse().ok()),
+            model: field(&text, "Device / Media Name:").unwrap_or_default(),
+            bus: if protocol.contains("usb") || protocol.contains("thunderbolt") { "usb" }
+                else if protocol.contains("pci") || protocol.contains("apple fabric") || protocol.contains("nvme") { "nvme" }
+                else if protocol.contains("sata") { "sata" }
+                else if protocol.contains("virtual") { "virtual" }
+                else { "unknown" }.into(),
+            rotational: field(&text, "Solid State:").map(|v| v != "Yes"),
+            size_bytes: field(&text, "Disk Size:").and_then(|v| v.split('(').nth(1)?.split_whitespace().next()?.parse().ok()),
         })
     }
 }
@@ -388,5 +429,22 @@ mod windows {
             rotational: match parts[2].to_lowercase().as_str() { "hdd" => Some(true), "ssd" => Some(false), _ => None },
             size_bytes: parts[3].trim().parse().ok(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn virtual_models() {
+        for m in ["Msft Virtual Disk", "Virtual_Disk NVME Premium", "QEMU HARDDISK", "VBOX HARDDISK", "Amazon Elastic Block Store"] {
+            assert!(super::is_virtual_model(m), "{m}");
+        }
+        assert!(!super::is_virtual_model("Samsung SSD 980 PRO 2TB"));
+    }
+
+    #[test]
+    fn comparable_strips_verbatim_prefix() {
+        let p = std::path::Path::new(r"\\?\C:\Users\x");
+        assert!(super::comparable(p).ends_with(r"c:\users\x") || super::comparable(p).ends_with(r"C:\Users\x"));
     }
 }
