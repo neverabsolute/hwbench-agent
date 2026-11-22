@@ -78,6 +78,12 @@ impl Api {
         let text = resp.body_mut().with_config().limit(1 << 20).read_to_string().map_err(|e| e.to_string())?;
         if status.is_success() {
             serde_json::from_str(&text).map_err(|e| format!("bad response from server: {e}"))
+        } else if (status == 403 || status == 503) && (text.contains("challenge-platform") || text.contains("Just a moment") || text.contains("cloudflare")) {
+            // A firewall challenge page, not an API error: common from cloud servers and VPNs.
+            Err(format!(
+                "hwbench.io's firewall blocked this request ({status}). This happens most often on cloud servers and VPNs. \
+                 Try again later or from another network."
+            ))
         } else {
             let msg = serde_json::from_str::<ErrorBody>(&text).map(|e| e.error.message).unwrap_or(text);
             Err(format!("server returned {status}: {msg}"))
