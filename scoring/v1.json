@@ -49,11 +49,11 @@
     }
   },
   "gpu": {
-    "status": "provisional: reference values will be recalibrated once real GPU results arrive",
+    "status": "provisional: reference projected from RTX 4060 specifications at the efficiency measured on a real RTX 5090 (~69% of rated FP32 and bandwidth); will be replaced by measured RTX 4060 results",
     "ref": {
-      "fp32Gflops": 10000,
-      "int32Giops": 5000,
-      "bandwidthGBs": 300
+      "fp32Gflops": 10400,
+      "int32Giops": 5800,
+      "bandwidthGBs": 190
     },
     "overall": {
       "formula": "100 * (fp32/ref)^0.4 * (int32/ref)^0.2 * (bandwidth/ref)^0.4"
@@ -62,6 +62,7 @@
       "fp32": 0.4,
       "int32": 0.2,
       "bandwidth": 0.4
-    }
+    },
+    "reference": "NVIDIA GeForce RTX 4060 (projected). 100 points = reference GPU."
   }
 }

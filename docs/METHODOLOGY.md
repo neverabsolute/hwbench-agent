@@ -45,9 +45,15 @@ macOS, DX12 on Windows, Vulkan on Linux):
 Each test first sizes its dispatch so one dispatch takes about 30 ms (long enough
 to time, far below OS GPU watchdogs), then repeats it for 2 s. The **fastest**
 dispatch counts, which filters out interference from the desktop compositor and
-background apps. Score: weighted geometric mean against reference values (weights
-in `scoring/v1.json`; GPU reference values are provisional until enough real
-results exist to calibrate them).
+background apps. Score: weighted geometric mean against a reference GPU (weights in
+`scoring/v1.json`). **100 = NVIDIA GeForce RTX 4060**, currently projected from
+its rated specifications at the efficiency these kernels reach on a real
+RTX 5090 (about 69% of rated FP32 throughput and memory bandwidth). It will be
+replaced by measured RTX 4060 results.
+
+These are compute tests. Gaps between GPUs are usually larger here than in
+games, which are often limited by the CPU, the resolution, or fixed-function
+hardware.
 
 GPU results carry **no proof of work**. A GPU does far more work per second than
 the server could re-check, so GPU results are kept honest by per-model
@@ -80,4 +86,6 @@ the published medians.
 ## Changes
 
 Scoring changes get a new version file, and all stored runs are rescored from
-their raw metrics. Old versions stay in this repo.
+their raw metrics. Old versions stay in this repo. Provisional reference values
+inside a version (currently the GPU reference) may be recalibrated in place;
+stored results are rescored from their raw metrics when that happens.
