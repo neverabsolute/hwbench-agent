@@ -44,6 +44,7 @@ pub struct GpuResult {
     pub adapter: AdapterReport,
     pub fp32_gflops: f64,
     pub int32_giops: f64,
+    #[serde(rename = "bandwidthGBs")]
     pub bandwidth_gbs: f64,
     pub buffer_bytes: u64,
     pub tests: std::collections::BTreeMap<&'static str, TestResult>,
@@ -280,4 +281,36 @@ pub fn run(adapter: &wgpu::Adapter, report: AdapterReport, window: Duration) -> 
     tests.insert("int32", int32);
     tests.insert("copy", copy);
     Ok(GpuResult { adapter: report, fp32_gflops: f, int32_giops: i, bandwidth_gbs: c, buffer_bytes: b.buffer_bytes, tests })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The server validates these exact key names (see docs/PROTOCOL.md).
+    #[test]
+    fn payload_keys_match_protocol() {
+        let t = || TestResult { ops_per_dispatch: 1.0, best_ns: 1, median_ns: 1, runs: 1, iters: 1 };
+        let mut tests = std::collections::BTreeMap::new();
+        tests.insert("fp32", t());
+        tests.insert("int32", t());
+        tests.insert("copy", t());
+        let r = GpuResult {
+            adapter: AdapterReport {
+                name: "x".into(), vendor_id: 1, device_id: 1, device_type: "DiscreteGpu".into(),
+                backend: "Vulkan".into(), driver: String::new(), driver_info: String::new(),
+            },
+            fp32_gflops: 1.0, int32_giops: 1.0, bandwidth_gbs: 1.0, buffer_bytes: 1, tests,
+        };
+        let v = serde_json::to_value(&r).unwrap();
+        for k in ["adapter", "fp32Gflops", "int32Giops", "bandwidthGBs", "bufferBytes", "tests"] {
+            assert!(v.get(k).is_some(), "missing key {k}: {v}");
+        }
+        for k in ["name", "vendorId", "deviceId", "deviceType", "backend", "driver", "driverInfo"] {
+            assert!(v["adapter"].get(k).is_some(), "missing adapter key {k}");
+        }
+        for k in ["opsPerDispatch", "bestNs", "medianNs", "runs", "iters"] {
+            assert!(v["tests"]["fp32"].get(k).is_some(), "missing test key {k}");
+        }
+    }
 }

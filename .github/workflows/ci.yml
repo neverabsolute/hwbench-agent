@@ -18,6 +18,7 @@ jobs:
       # Golden digests must match on every OS/arch — this is what makes
       # server-side verification of native results possible.
       - run: cargo test --release -p hwbench-kernels
+      - run: cargo test --release -p hwbench  # payload key names match the protocol
       - run: cargo build --release -p hwbench
       - run: cargo build -p hwbench-kernels-wasm --target wasm32-unknown-unknown --profile wasm
       - run: cargo run --release -p hwbench -- --list-gpus

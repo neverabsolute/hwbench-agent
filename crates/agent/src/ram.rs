@@ -116,3 +116,15 @@ fn par_chunks_mut(data: &mut [u64], threads: usize, f: impl Fn(&mut [u64]) + Syn
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn payload_keys_match_protocol() {
+        let r = super::RamResult { read_gbs: 1.0, write_gbs: 1.0, copy_gbs: 1.0, latency_ns: 1.0, buffer_bytes: 1, threads: 1 };
+        let v = serde_json::to_value(&r).unwrap();
+        for k in ["readGBs", "writeGBs", "copyGBs", "latencyNs", "bufferBytes", "threads"] {
+            assert!(v.get(k).is_some(), "missing key {k}: {v}");
+        }
+    }
+}
