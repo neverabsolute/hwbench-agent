@@ -47,7 +47,8 @@ POST /api/v1/sessions/{code}/submit
     "tests": [
       { "kernel": "hash", "threads": 1, "chunks": 291, "elapsedNs": 1503000000,
         "digests": "<chunks × 16 hex chars>" }
-    ]
+    ],
+    "clocks": { "singleMaxMhz": 5602, "allCoreMhz": 5150 }   // optional, Linux only
   },
   "ram": { "readGBs": 61.2, "writeGBs": 40.1, "copyGBs": 35.0, "latencyNs": 82.3 },
   "gpus": [ { "name": "NVIDIA GeForce RTX 4070", "vendorId": 4318, "deviceId": 10118, "deviceType": "DiscreteGpu", "backend": "Vulkan", … } ],

@@ -133,9 +133,14 @@ a run with every accepted result for the same model.
 * CPU results include per-chunk digests for a seed the server issues. The server
   re-runs a random sample of chunks and rejects runs whose digests don't match.
 * Consistency checks catch results such as multi-core scaling beyond the reported
-  core count, or results far outside the model's distribution (a median absolute
-  deviation test). Flagged results stay out of aggregates until a moderator
-  reviews them.
+  core count. Results more than 30% above the model's median (and more than 6
+  median absolute deviations) are held for review and stay out of aggregates
+  until a moderator reviews them.
+* Overclocked and tuned parts count, with a label. A CPU is labeled overclocked
+  when its observed clock exceeds its rated boost by more than 3% (Linux exposes
+  live clocks; Windows and macOS don't to unprivileged programs). CPU and GPU
+  results more than 8% and 3 MADs above the model's median are labeled likely
+  overclocked or tuned. Component pages show the fastest and slowest results.
 * Runs where the OS limits the threads available (VMs, containers) are kept but
   left out of multi-core aggregates.
 
