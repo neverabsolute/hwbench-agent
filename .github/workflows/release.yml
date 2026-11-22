@@ -1,0 +1,67 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-latest,    target: x86_64-unknown-linux-musl,  asset: hwbench-linux-x86_64 }
+          - { runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, asset: hwbench-linux-aarch64 }
+          - { runner: macos-latest,     target: aarch64-apple-darwin,       asset: hwbench-macos-aarch64 }
+          - { runner: macos-latest,     target: x86_64-apple-darwin,        asset: hwbench-macos-x86_64 }
+          - { runner: windows-latest,   target: x86_64-pc-windows-msvc,     asset: hwbench-windows-x86_64.exe }
+          - { runner: windows-11-arm,   target: aarch64-pc-windows-msvc,    asset: hwbench-windows-aarch64.exe }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo build --release --locked -p hwbench --target ${{ matrix.target }}
+      - shell: bash
+        run: |
+          src=target/${{ matrix.target }}/release/hwbench
+          [[ "${{ matrix.target }}" == *windows* ]] && src="$src.exe"
+          mkdir -p dist && cp "$src" "dist/${{ matrix.asset }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - run: cargo build --locked -p hwbench-kernels-wasm --target wasm32-unknown-unknown --profile wasm
+      - run: mkdir -p dist && cp target/wasm32-unknown-unknown/wasm/hwbench_kernels_wasm.wasm dist/hwbench-kernels.wasm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hwbench-kernels.wasm
+          path: dist/hwbench-kernels.wasm
+
+  release:
+    needs: [build, wasm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          prerelease: ${{ contains(github.ref_name, '-') || startsWith(github.ref_name, 'v0.') }}
+          generate_release_notes: true

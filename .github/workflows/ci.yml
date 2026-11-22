@@ -1,0 +1,23 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      # Golden digests must match on every OS/arch — this is what makes
+      # server-side verification of native results possible.
+      - run: cargo test --release -p hwbench-kernels
+      - run: cargo build --release -p hwbench
+      - run: cargo build -p hwbench-kernels-wasm --target wasm32-unknown-unknown --profile wasm
+      - run: cargo run --release -p hwbench -- --dry-run --no-open
