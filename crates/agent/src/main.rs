@@ -1,5 +1,6 @@
 mod api;
 mod cpu;
+mod disk;
 mod gpu;
 mod ram;
 mod system;
@@ -10,7 +11,7 @@ use std::io::Write;
 use std::time::Duration;
 
 const DEFAULT_API: &str = "https://hwbench.io";
-const COMPONENTS: [&str; 3] = ["cpu", "gpu", "ram"];
+const COMPONENTS: [&str; 4] = ["cpu", "disk", "gpu", "ram"];
 
 struct Args {
     api: String,
@@ -19,7 +20,9 @@ struct Args {
     open: bool,
     dry_run: bool,
     gpu_index: Option<usize>,
+    disk_path: Option<std::path::PathBuf>,
     list_gpus: bool,
+    json: bool,
     /// Started by double-clicking a downloaded launcher: keep the window open at the end.
     pause_at_end: bool,
 }
@@ -43,7 +46,9 @@ fn parse_args() -> Result<Args, lexopt::Error> {
         open: true,
         dry_run: false,
         gpu_index: None,
+        disk_path: None,
         list_gpus: false,
+        json: false,
         pause_at_end: false,
     };
     if let Some(code) = code_from_exe_name() {
@@ -58,8 +63,11 @@ fn parse_args() -> Result<Args, lexopt::Error> {
             Long("cpu") => args.selection.push("cpu".into()),
             Long("ram") => args.selection.push("ram".into()),
             Long("gpu") => args.selection.push("gpu".into()),
+            Long("disk") => args.selection.push("disk".into()),
+            Long("disk-path") => args.disk_path = Some(p.value()?.into()),
             Long("gpu-index") => args.gpu_index = Some(p.value()?.parse()?),
             Long("list-gpus") => args.list_gpus = true,
+            Long("json") => args.json = true,
             Long("all") => args.selection.extend(COMPONENTS.iter().map(|s| s.to_string())),
             Long("no-open") => args.open = false,
             Long("dry-run") => args.dry_run = true,
@@ -72,11 +80,13 @@ fn parse_args() -> Result<Args, lexopt::Error> {
                     "hwbench {} — https://hwbench.io\n\n\
                      USAGE: hwbench [--session CODE] [--cpu] [--gpu] [--ram] [--all]\n\n\
                      --session CODE  use a session created on hwbench.io/run\n\
-                     --cpu, --gpu, --ram  pick components (default: all)\n\
+                     --cpu, --gpu, --ram, --disk  pick components (default: all)\n\
+                     --disk-path DIR test the drive holding DIR (default: system temp dir)\n\
                      --list-gpus     show detected GPUs and exit\n\
                      --gpu-index N   benchmark GPU N from --list-gpus (default: best)\n\
                      --no-open       don't open the results page in a browser\n\
                      --dry-run       run locally and print results, submit nothing\n\
+                     --json          with --dry-run: print the payload that would be submitted\n\
                      --api URL       server (default {DEFAULT_API})",
                     env!("CARGO_PKG_VERSION")
                 );
@@ -130,6 +140,7 @@ fn main() {
                 window_ms: 1500,
             }),
             gpu: Some(api::GpuPlan { window_ms: 2000 }),
+            disk: Some(api::DiskPlan { window_ms: 2000 }),
         };
         (String::new(), challenge)
     } else {
@@ -211,6 +222,32 @@ fn main() {
         }
     }
 
+    if wants("disk") {
+        let window = Duration::from_millis(challenge.disk.as_ref().map(|d| d.window_ms).unwrap_or(2000));
+        let dir = args.disk_path.clone().unwrap_or_else(std::env::temp_dir);
+        let info = disk::drive_info(&dir);
+        println!("Benchmarking storage: {} ({})", if info.model.is_empty() { dir.display().to_string() } else { info.model.clone() }, info.bus);
+        match disk::run(&dir, &seed, window, |step| {
+            print!("\r  {step:<28}");
+            let _ = std::io::stdout().flush();
+        }) {
+            Ok(r) => {
+                let mbs = |t: &disk::IoTest| t.bytes as f64 / (t.elapsed_ns as f64 / 1e9) / 1e6;
+                let iops = |t: &disk::IoTest| t.ops as f64 / (t.elapsed_ns as f64 / 1e9);
+                println!(
+                    "\r  seq read {:.0} MB/s · seq write {:.0} MB/s · 4K QD1 read {:.0} IOPS · 4K QD32 read {:.0} IOPS{}",
+                    mbs(&r.seq_read), mbs(&r.seq_write), iops(&r.rnd_read_q1), iops(&r.rnd_read_q32),
+                    if r.direct { "" } else { " (OS cache couldn't be bypassed: not counted)" }
+                );
+                body["disk"] = serde_json::to_value(&r).unwrap();
+            }
+            Err(e) => {
+                println!("\r  skipped: {e:<60}");
+                body["disk"] = serde_json::json!({ "error": e.chars().take(300).collect::<String>() });
+            }
+        }
+    }
+
     if wants("ram") {
         print!("Benchmarking memory… ");
         let _ = std::io::stdout().flush();
@@ -220,6 +257,9 @@ fn main() {
     }
 
     if args.dry_run {
+        if args.json {
+            println!("{}", serde_json::to_string_pretty(&body).unwrap());
+        }
         println!("\n--dry-run: nothing was submitted.");
         return;
     }

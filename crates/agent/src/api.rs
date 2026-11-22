@@ -29,6 +29,14 @@ pub struct Challenge {
     pub cpu: Option<CpuPlan>,
     #[serde(default)]
     pub gpu: Option<GpuPlan>,
+    #[serde(default)]
+    pub disk: Option<DiskPlan>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskPlan {
+    pub window_ms: u64,
 }
 
 #[derive(Deserialize, Debug)]

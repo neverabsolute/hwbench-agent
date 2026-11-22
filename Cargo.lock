@@ -474,6 +474,7 @@ dependencies = [
  "blake3",
  "hwbench-kernels",
  "lexopt",
+ "libc",
  "pollster",
  "serde",
  "serde_json",

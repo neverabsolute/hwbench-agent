@@ -17,3 +17,6 @@ webbrowser = "1"
 blake3 = "1"
 wgpu = "30"
 pollster = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

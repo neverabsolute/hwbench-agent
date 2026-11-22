@@ -64,5 +64,25 @@
       "bandwidth": 0.4
     },
     "reference": "NVIDIA GeForce RTX 4060 (projected). 100 points = reference GPU."
+  },
+  "disk": {
+    "status": "provisional: projected for a mainstream PCIe 4.0 NVMe SSD (Samsung 980 PRO class) under this benchmark's settings; will be recalibrated from real results",
+    "reference": "Mainstream PCIe 4.0 NVMe SSD. 100 points = reference drive.",
+    "ref": {
+      "seqReadMBs": 3500,
+      "seqWriteMBs": 3000,
+      "rndReadQ1Iops": 14000,
+      "rndWriteQ1Iops": 40000,
+      "rndReadQ32Iops": 300000,
+      "rndWriteQ32Iops": 300000
+    },
+    "weights": {
+      "seqReadMBs": 0.15,
+      "seqWriteMBs": 0.15,
+      "rndReadQ1Iops": 0.25,
+      "rndWriteQ1Iops": 0.15,
+      "rndReadQ32Iops": 0.15,
+      "rndWriteQ32Iops": 0.15
+    }
   }
 }

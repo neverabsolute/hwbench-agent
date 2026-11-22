@@ -61,6 +61,26 @@ distributions, hard ceilings above any shipping GPU, and the same server-side
 wall-clock bound as CPU runs. Software renderers (e.g. llvmpipe, WARP) are
 recorded but never counted.
 
+## Storage
+
+Runs against a temporary file (1 GiB, or 256 MiB when free space is short) on the
+drive holding the system temp directory, or the folder given with `--disk-path`.
+The file is filled with random data, so drives that compress data can't inflate
+results, and it's deleted afterwards. The OS page cache is bypassed (`O_DIRECT`
+on Linux, `F_NOCACHE` on macOS, `FILE_FLAG_NO_BUFFERING` on Windows); the drive's
+own cache is not, which matches how applications experience the drive.
+
+| Test | Settings |
+|---|---|
+| Sequential read / write | 1 MiB blocks, queue depth 1, repeated passes for at least 2 s |
+| 4K random read / write QD1 | one request at a time: latency-bound, what makes a system feel fast |
+| 4K random read / write QD32 | 32 threads issuing requests in parallel: peak IOPS |
+
+Score: weighted geometric mean against a reference drive (weights in
+`scoring/v1.json`; 4K QD1 reads weigh most). Results where the OS cache couldn't
+be bypassed, or that come from virtual disks, are recorded but not counted.
+Storage results are sensitive to other disk activity on the machine.
+
 ## Component scores and percentiles
 
 A component's page shows the **median** of all accepted results for that model
