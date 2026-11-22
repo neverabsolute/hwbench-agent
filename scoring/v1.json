@@ -156,5 +156,35 @@
         "rationale": "Large files and parallel I/O: video editing, datasets, VMs and build caches."
       }
     }
+  },
+  "calibration": {
+    "note": "Reference hardware for each provisional value. Once enough accepted results exist, medians from these components replace the provisional numbers (reviewed, committed change; stored results are rescored).",
+    "minSamples": 10,
+    "cpu": {
+      "components": [
+        "intel-core-i7-12700k",
+        "intel-core-i7-12700kf"
+      ],
+      "provisional": [
+        "overall.norm.multi"
+      ]
+    },
+    "gpu": {
+      "components": [
+        "nvidia-geforce-rtx-4060"
+      ],
+      "provisional": [
+        "ref"
+      ]
+    },
+    "disk": {
+      "components": [
+        "samsung-980-pro-1tb",
+        "samsung-980-pro-2tb"
+      ],
+      "provisional": [
+        "ref"
+      ]
+    }
   }
 }
