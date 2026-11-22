@@ -81,7 +81,7 @@ fn parse_args() -> Result<Args, lexopt::Error> {
                      USAGE: hwbench [--session CODE] [--cpu] [--gpu] [--ram] [--all]\n\n\
                      --session CODE  use a session created on hwbench.io/run\n\
                      --cpu, --gpu, --ram, --disk  pick components (default: all)\n\
-                     --disk-path DIR test the drive holding DIR (default: system temp dir)\n\
+                     --disk-path DIR test the drive holding DIR (default: temp folder, or /var/tmp if it's in RAM)\n\
                      --list-gpus     show detected GPUs and exit\n\
                      --gpu-index N   benchmark GPU N from --list-gpus (default: best)\n\
                      --no-open       don't open the results page in a browser\n\
@@ -224,7 +224,7 @@ fn main() {
 
     if wants("disk") {
         let window = Duration::from_millis(challenge.disk.as_ref().map(|d| d.window_ms).unwrap_or(2000));
-        let dir = args.disk_path.clone().unwrap_or_else(std::env::temp_dir);
+        let dir = args.disk_path.clone().or_else(disk::default_dir).unwrap_or_else(std::env::temp_dir);
         let info = disk::drive_info(&dir);
         println!("Benchmarking storage: {} ({})", if info.model.is_empty() { dir.display().to_string() } else { info.model.clone() }, info.bus);
         match disk::run(&dir, &seed, window, |step| {

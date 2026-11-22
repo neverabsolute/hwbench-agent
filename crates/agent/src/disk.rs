@@ -168,11 +168,49 @@ pub fn free_space(dir: &Path) -> Option<u64> {
 }
 
 fn filesystem_of(dir: &Path) -> String {
+    #[cfg(target_os = "linux")]
+    if let Some(fs) = linux::fs_type(dir) {
+        return fs.to_string();
+    }
     disk_for(dir, |d| d.file_system().to_string_lossy().into_owned()).unwrap_or_default()
+}
+
+/// Filesystems whose data lives in RAM: benchmarking them measures memory, not a drive.
+pub fn is_ram_backed(dir: &Path) -> bool {
+    #[cfg(target_os = "linux")]
+    return matches!(linux::fs_type(dir), Some("tmpfs") | Some("ramfs"));
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = dir;
+        false
+    }
+}
+
+/// Where to put the test file by default: the system temp folder, unless it's in
+/// RAM (Debian 13 and others mount /tmp as tmpfs), then /var/tmp, then home.
+pub fn default_dir() -> Option<PathBuf> {
+    let mut candidates = vec![std::env::temp_dir()];
+    if cfg!(unix) {
+        candidates.push(PathBuf::from("/var/tmp"));
+    }
+    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
+        candidates.push(PathBuf::from(home));
+    }
+    candidates.into_iter().find(|d| d.is_dir() && !is_ram_backed(d) && writable(d))
+}
+
+fn writable(dir: &Path) -> bool {
+    let probe = dir.join(format!(".hwbench-probe-{}", std::process::id()));
+    let ok = std::fs::write(&probe, b"x").is_ok();
+    let _ = std::fs::remove_file(&probe);
+    ok
 }
 
 /// Benchmark the drive holding `dir`. `window` bounds each timed test.
 pub fn run(dir: &Path, seed: &[u8; 32], window: Duration, progress: impl Fn(&str)) -> Result<DiskResult, String> {
+    if is_ram_backed(dir) {
+        return Err(format!("{} is stored in RAM (tmpfs), so it can't measure a drive; pass --disk-path with a folder on a real disk", dir.display()));
+    }
     let free = free_space(dir).unwrap_or(0);
     let file_bytes: u64 = if free >= 8 << 30 { 1 << 30 } else if free >= 2 << 30 { 256 << 20 } else {
         return Err(format!("not enough free space on {} (need 2 GiB)", dir.display()));
@@ -316,6 +354,33 @@ mod linux {
     use super::DriveInfo;
     use std::os::unix::fs::MetadataExt;
     use std::path::{Path, PathBuf};
+
+    /// Filesystem type from statfs(2): authoritative, unlike matching mount points.
+    pub fn fs_type(dir: &Path) -> Option<&'static str> {
+        use std::os::unix::ffi::OsStrExt;
+        let c = std::ffi::CString::new(dir.as_os_str().as_bytes()).ok()?;
+        let mut st: libc::statfs = unsafe { std::mem::zeroed() };
+        if unsafe { libc::statfs(c.as_ptr(), &mut st) } != 0 {
+            return None;
+        }
+        Some(match st.f_type as u64 {
+            0xEF53 => "ext4",
+            0x5846_5342 => "xfs",
+            0x9123_683E => "btrfs",
+            0x2FC1_2FC1 => "zfs",
+            0x0102_1994 => "tmpfs",
+            0x8584_58F6 => "ramfs",
+            0x794C_7630 => "overlay",
+            0xF2F5_2010 => "f2fs",
+            0x6969 => "nfs",
+            0xFF53_4D42 => "cifs",
+            0x6573_5546 => "fuse",
+            0x4D44 => "vfat",
+            0x2011_BAB0 => "exfat",
+            0x5346_544E => "ntfs",
+            _ => "other",
+        })
+    }
 
     fn read(p: impl AsRef<Path>) -> Option<String> {
         std::fs::read_to_string(p).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
