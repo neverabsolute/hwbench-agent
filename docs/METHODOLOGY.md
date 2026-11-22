@@ -107,6 +107,20 @@ that reweight the *same* measured sub-scores (weights and rationale in
 
 Rankings can be sorted by any profile, and component pages show all three.
 
+## Builds
+
+A saved parts list ("build") gets an expected score per profile: a weighted
+geometric mean of its parts' scores for that profile.
+
+| Build profile | CPU | GPU | Storage |
+|---|---|---|---|
+| Gaming | 35% | 50% | 15% |
+| Everyday | 50% | 20% | 30% |
+| Workstation | 60% | 25% | 15% |
+
+Parts without results are left out and the remaining weights rescaled. Runs
+started from a build are listed on its page next to the expected score.
+
 ## Component scores and percentiles
 
 A component's page shows the **median** of all accepted results for that model

@@ -186,5 +186,25 @@
         "ref"
       ]
     }
+  },
+  "builds": {
+    "note": "A build's score for a profile is a weighted geometric mean of its parts' scores for that profile (CPU and storage use their profile scores, the GPU its single score). Missing parts are left out and the remaining weights rescaled. When a build has several drives, the first (system) drive counts.",
+    "profiles": {
+      "gaming": {
+        "cpu": 0.35,
+        "gpu": 0.5,
+        "disk": 0.15
+      },
+      "everyday": {
+        "cpu": 0.5,
+        "gpu": 0.2,
+        "disk": 0.3
+      },
+      "workstation": {
+        "cpu": 0.6,
+        "gpu": 0.25,
+        "disk": 0.15
+      }
+    }
   }
 }
