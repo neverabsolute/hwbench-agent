@@ -1,7 +1,7 @@
 {
   "version": 1,
   "status": "provisional",
-  "reference": "Intel Core i7-12700K, DDR4-3200 dual channel, Linux. 100 points = reference single-thread rate.",
+  "reference": "Intel Core i7-12700K, single-thread rates measured on Linux. 100 points = reference single-thread rate.",
   "cpu": {
     "kernels": [
       "hash",
