@@ -85,6 +85,28 @@ Score: weighted geometric mean against a reference drive (weights in
 be bypassed, or that come from virtual disks, are recorded but not counted.
 Storage results are sensitive to other disk activity on the machine.
 
+## Profiles
+
+There's no single right weighting: a gamer and someone who renders video value
+different things. So CPU and storage scores also come in three **profiles**
+that reweight the *same* measured sub-scores (weights and rationale in
+`scoring/v1.json`):
+
+| CPU profile | Single | Quad | Multi |
+|---|---|---|---|
+| Gaming | 40% | 40% | 20% |
+| Everyday (headline score) | 40% | 30% | 30% |
+| Workstation | 15% | 15% | 70% |
+
+| Storage profile | Seq read | Seq write | 4K QD1 read | 4K QD1 write | 4K QD32 read | 4K QD32 write |
+|---|---|---|---|---|---|---|
+| Gaming | 35% | | 35% | | 30% | |
+| Everyday (headline score) | 15% | 15% | 25% | 15% | 15% | 15% |
+| Workstation | 25% | 25% | | | 25% | 25% |
+
+No profile weights any core count or test close to zero. Rankings can be sorted
+by any profile, and component pages show all three.
+
 ## Component scores and percentiles
 
 A component's page shows the **median** of all accepted results for that model

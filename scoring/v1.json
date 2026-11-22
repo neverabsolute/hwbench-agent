@@ -89,5 +89,72 @@
       "rndReadQ32Iops": 0.15,
       "rndWriteQ32Iops": 0.15
     }
+  },
+  "profiles": {
+    "note": "Profiles reweight the same measured sub-scores; they never change measurements. 'everyday' equals each component's headline score.",
+    "cpu": {
+      "default": "everyday",
+      "gaming": {
+        "label": "Gaming",
+        "weights": {
+          "single": 0.4,
+          "quad": 0.4,
+          "multi": 0.2
+        },
+        "rationale": "Most games are limited by a few fast threads, but current engines use 6-8 cores, so all-core throughput still counts."
+      },
+      "everyday": {
+        "label": "Everyday",
+        "weights": {
+          "single": 0.4,
+          "quad": 0.3,
+          "multi": 0.3
+        },
+        "rationale": "Browsing, office work and light content creation: responsiveness plus occasional all-core work."
+      },
+      "workstation": {
+        "label": "Workstation",
+        "weights": {
+          "single": 0.15,
+          "quad": 0.15,
+          "multi": 0.7
+        },
+        "rationale": "Rendering, compiling, encoding and simulation scale across every core."
+      }
+    },
+    "disk": {
+      "default": "everyday",
+      "gaming": {
+        "label": "Gaming",
+        "weights": {
+          "seqReadMBs": 0.35,
+          "rndReadQ1Iops": 0.35,
+          "rndReadQ32Iops": 0.3
+        },
+        "rationale": "Load times are dominated by reads: large assets sequentially, many small files randomly."
+      },
+      "everyday": {
+        "label": "Everyday",
+        "weights": {
+          "seqReadMBs": 0.15,
+          "seqWriteMBs": 0.15,
+          "rndReadQ1Iops": 0.25,
+          "rndWriteQ1Iops": 0.15,
+          "rndReadQ32Iops": 0.15,
+          "rndWriteQ32Iops": 0.15
+        },
+        "rationale": "Booting, launching apps and general use: low-queue random reads matter most."
+      },
+      "workstation": {
+        "label": "Workstation",
+        "weights": {
+          "seqReadMBs": 0.25,
+          "seqWriteMBs": 0.25,
+          "rndReadQ32Iops": 0.25,
+          "rndWriteQ32Iops": 0.25
+        },
+        "rationale": "Large files and parallel I/O: video editing, datasets, VMs and build caches."
+      }
+    }
   }
 }
