@@ -6,8 +6,11 @@ use std::time::Instant;
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RamResult {
+    #[serde(rename = "readGBs")]
     pub read_gbs: f64,
+    #[serde(rename = "writeGBs")]
     pub write_gbs: f64,
+    #[serde(rename = "copyGBs")]
     pub copy_gbs: f64,
     pub latency_ns: f64,
     pub buffer_bytes: u64,
