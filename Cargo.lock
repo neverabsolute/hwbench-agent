@@ -469,7 +469,7 @@ checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
 name = "hwbench"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "blake3",
  "hwbench-kernels",
@@ -486,7 +486,7 @@ dependencies = [
 
 [[package]]
 name = "hwbench-kernels"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "blake3",
  "miniz_oxide",
@@ -495,7 +495,7 @@ dependencies = [
 
 [[package]]
 name = "hwbench-kernels-wasm"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "hwbench-kernels",
 ]
