@@ -21,8 +21,12 @@ available threads. A sub-score is the geometric mean, across kernels, of
 `chunks/sec ÷ reference single-thread chunks/sec × 100`. So the reference CPU
 scores 100 single-core, about 400 quad-core, and more multi-core.
 
-The headline CPU score is a weighted geometric mean of the three sub-scores
-(weights in `scoring/v1.json`). The sub-scores are always shown next to it,
+The headline CPU score is a weighted geometric mean of the three sub-scores,
+each divided by what the reference CPU scores (single 100, quad 400, multi-core
+1000; weights and normalizers in `scoring/v1.json`). The multi-core normalizer is
+modeled from measured thread scaling of a real 16-core CPU and cross-checked
+against public all-core ratios; it will be replaced by a measured full-thread
+i7-12700K result. The sub-scores are always shown next to it,
 so readers can apply their own weighting.
 
 ## Memory

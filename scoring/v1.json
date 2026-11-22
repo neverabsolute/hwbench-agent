@@ -29,12 +29,17 @@
       }
     },
     "overall": {
-      "formula": "100 * (single/100)^w.single * (quad/400)^w.quad * (multi/1200)^w.multi",
+      "formula": "100 * (single/100)^w.single * (quad/norm.quad)^w.quad * (multi/norm.multi)^w.multi",
       "weights": {
         "single": 0.4,
         "quad": 0.3,
         "multi": 0.3
-      }
+      },
+      "norm": {
+        "quad": 400,
+        "multi": 1000
+      },
+      "normNotes": "Normalizers are the reference CPU's expected quad- and multi-core scores. multi=1000 is modeled from measured per-kernel scaling of a Ryzen 9 9950X3D (8 P-cores with SMT + 4 E-cores) and cross-checked against public all-core ratios (~980-985); provisional until a full-thread i7-12700K result is measured."
     }
   },
   "ram": {
