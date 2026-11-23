@@ -219,10 +219,11 @@ fn main() {
                 println!("Skipping GPU: no usable GPU found (is a graphics driver installed?)");
                 body["gpu"] = serde_json::json!({ "error": "no_adapter" });
             }
-            Some((adapter, report)) => {
+            // The handle from startup can go stale during the CPU tests; the GPU is looked up again by id.
+            Some((_, report)) => {
                 print!("Benchmarking GPU: {}… ", report.name);
                 let _ = std::io::stdout().flush();
-                match gpu::run(adapter, report.clone(), window) {
+                match gpu::run_with_retry(report, window) {
                     Ok(mut r) => {
                         println!("fp32 {:.0} GFLOPS · int32 {:.0} GIOPS · bandwidth {:.0} GB/s", r.fp32_gflops, r.int32_giops, r.bandwidth_gbs);
                         r.details = gpu::details::collect(r.adapter.vendor_id, r.adapter.device_id, &r.adapter.name);

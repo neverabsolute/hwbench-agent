@@ -85,6 +85,43 @@ fn backend_rank(b: wgpu::Backend) -> u8 {
     }
 }
 
+/// The same GPU on every graphics API it's available through, freshly enumerated, best first.
+/// A handle from the start of the run can go stale (driver reset, power-state change), so
+/// the GPU test looks the device up again right before using it.
+fn fresh_candidates(target: &AdapterReport) -> Vec<(wgpu::Adapter, AdapterReport)> {
+    let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+    desc.backends = wgpu::Backends::PRIMARY;
+    let instance = wgpu::Instance::new(desc);
+    let mut out: Vec<_> = pollster::block_on(instance.enumerate_adapters(wgpu::Backends::PRIMARY))
+        .into_iter()
+        .map(|a| {
+            let i = a.get_info();
+            (a, i)
+        })
+        .filter(|(_, i)| i.vendor == target.vendor_id && i.device == target.device_id && (target.device_id != 0 || i.name.trim() == target.name))
+        .collect();
+    out.sort_by_key(|(_, i)| (format!("{:?}", i.backend) != target.backend, backend_rank(i.backend)));
+    out.into_iter().map(|(a, i)| (a, report(&i))).collect()
+}
+
+/// Run the GPU suite on `target`, retrying on a fresh handle and then on its other graphics
+/// API when the device is lost or can't be opened.
+pub fn run_with_retry(target: &AdapterReport, window: Duration) -> Result<GpuResult, String> {
+    let mut last = String::from("GPU not found when the test started");
+    for attempt in 0..2 {
+        for (adapter, rep) in fresh_candidates(target) {
+            match run(&adapter, rep, window) {
+                Ok(r) => return Ok(r),
+                Err(e) => last = e,
+            }
+        }
+        if attempt == 0 {
+            std::thread::sleep(Duration::from_secs(2)); // let the driver finish recovering
+        }
+    }
+    Err(last)
+}
+
 /// All distinct GPUs (one entry per physical device), best first.
 pub fn list_adapters() -> Vec<(wgpu::Adapter, AdapterReport)> {
     let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
@@ -119,6 +156,8 @@ struct Bench {
     bind_group: wgpu::BindGroup,
     pipelines: [wgpu::ComputePipeline; 3],
     buffer_bytes: u64,
+    /// First device error or loss seen during the run (wgpu would otherwise panic).
+    failure: std::sync::Arc<std::sync::Mutex<Option<String>>>,
 }
 
 impl Bench {
@@ -141,6 +180,17 @@ impl Bench {
             ..Default::default()
         }))
         .map_err(|e| format!("could not open GPU: {e}"))?;
+        let failure = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
+        let f1 = failure.clone();
+        device.on_uncaptured_error(std::sync::Arc::new(move |e: wgpu::Error| {
+            f1.lock().unwrap().get_or_insert_with(|| e.to_string());
+        }));
+        let f2 = failure.clone();
+        device.set_device_lost_callback(move |reason, msg| {
+            if reason != wgpu::DeviceLostReason::Destroyed {
+                f2.lock().unwrap().get_or_insert_with(|| format!("GPU was reset during the test ({msg})"));
+            }
+        });
 
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("hwbench kernels"),
@@ -201,7 +251,7 @@ impl Bench {
             })
         };
         let pipelines = [make("fp32"), make("int32"), make("copy")];
-        Ok(Bench { device, queue, params, bind_group, pipelines, buffer_bytes })
+        Ok(Bench { device, queue, params, bind_group, pipelines, buffer_bytes, failure })
     }
 
     /// Run one dispatch and return its wall-clock duration (submit → completion).
@@ -224,6 +274,13 @@ impl Bench {
         t.elapsed()
     }
 
+    fn check(&self) -> Result<(), String> {
+        match self.failure.lock().unwrap().clone() {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
+    }
+
     fn measure(&self, kernel: usize, window: Duration, ops_per_iter_dispatch: impl Fn(u32) -> f64) -> TestResult {
         let workgroups = if kernel == 2 { 4096 } else { INVOCATIONS / WG };
         // Calibrate: grow work until one dispatch is long enough to time reliably.
@@ -242,7 +299,7 @@ impl Bench {
         let start = Instant::now();
         while start.elapsed() < window || times.len() < 3 {
             times.push(self.dispatch(kernel, iters, workgroups));
-            if times.len() >= 2000 {
+            if times.len() >= 2000 || self.failure.lock().unwrap().is_some() {
                 break;
             }
         }
@@ -274,10 +331,14 @@ pub fn run(adapter: &wgpu::Adapter, report: AdapterReport, window: Duration) -> 
         b.dispatch(0, 256, INVOCATIONS / WG);
     }
     let inv = INVOCATIONS as f64;
+    b.check()?;
     let fp32 = b.measure(0, window, |it| inv * it as f64 * FP32_FLOP_PER_ITER);
+    b.check()?;
     let int32 = b.measure(1, window, |it| inv * it as f64 * INT32_OPS_PER_ITER);
+    b.check()?;
     let half = (b.buffer_bytes / 2) as f64;
     let copy = b.measure(2, window, |_| 2.0 * half); // read half + write half
+    b.check()?;
     let rate = |t: &TestResult| t.ops_per_dispatch / (t.best_ns as f64 / 1e9);
     let mut tests = std::collections::BTreeMap::new();
     let (f, i, c) = (rate(&fp32) / 1e9, rate(&int32) / 1e9, rate(&copy) / 1e9);
