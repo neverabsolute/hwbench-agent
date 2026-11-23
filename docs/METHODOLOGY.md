@@ -136,12 +136,10 @@ a run with every accepted result for the same model.
   core count. Results more than 30% above the model's median (and more than 6
   median absolute deviations) are held for review and stay out of aggregates
   until a moderator reviews them.
-* Overclocked and tuned parts count, with a label. A CPU is labeled overclocked
-  when its observed clock exceeds its rated boost by more than 3%. The agent reads
-  live clocks on Linux (cpufreq) and Windows (the performance counters Task Manager
-  uses); macOS doesn't expose them to programs without administrator rights. CPU and GPU
-  results more than 8% and 3 MADs above the model's median are labeled likely
-  overclocked or tuned. Component pages show the fastest and slowest results.
+* Overclocked and tuned parts count like any other result, without a label. Component
+  pages show the fastest and slowest results. The agent reports live CPU clocks on Linux
+  (cpufreq), shown with a run's hardware details; Windows and macOS don't expose reliable
+  live clocks to programs without administrator rights.
 * Runs where the OS limits the threads available (VMs, containers) are kept but
   left out of multi-core aggregates.
 

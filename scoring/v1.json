@@ -206,5 +206,36 @@
         "disk": 0.15
       }
     }
+  },
+  "system": {
+    "weights": {
+      "cpu": 0.35,
+      "gpu": 0.35,
+      "disk": 0.15,
+      "ram": 0.15
+    },
+    "minParts": 2,
+    "tiers": [
+      {
+        "key": "low",
+        "label": "Low",
+        "below": 50
+      },
+      {
+        "key": "mid",
+        "label": "Mid",
+        "below": 100
+      },
+      {
+        "key": "high",
+        "label": "High",
+        "below": 200
+      },
+      {
+        "key": "extreme",
+        "label": "Extreme"
+      }
+    ],
+    "notes": "System score: weighted geometric mean of the part scores a run includes (CPU, GPU, storage, memory), with the weights rescaled over the parts present; needs at least minParts parts. Same scale as part scores (100 = reference hardware). Each tier spans a doubling of the score."
   }
 }

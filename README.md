@@ -55,7 +55,7 @@ can be started by double-clicking. The site doesn't offer such downloads yet.
 ## Privacy
 
 The agent sends the benchmark results; the model names of the CPU, GPU and test drive;
-core counts, memory size, OS and kernel version; on Linux and Windows, the CPU clock
+core counts, memory size, OS and kernel version; on Linux, the CPU clock
 speeds seen during the test; the motherboard model and BIOS version (or the computer's
 model, for prebuilt PCs and laptops); each memory module's size, type, speed,
 manufacturer and part number; CPU cache sizes; the GPU's memory size, driver version,
