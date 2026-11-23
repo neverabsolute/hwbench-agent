@@ -30,6 +30,7 @@ pub fn run_test(seed: &[u8; 32], kernel: Kernel, threads: usize, window: Duratio
         let handles: Vec<_> = (0..threads)
             .map(|_| {
                 s.spawn(|| {
+                    crate::qos::full_speed_thread();
                     let mut local = Vec::with_capacity(512);
                     while Instant::now() < deadline {
                         let i = next.fetch_add(1, Ordering::Relaxed);

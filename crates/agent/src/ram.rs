@@ -43,7 +43,10 @@ pub fn run(seed: &[u8; 32], total_mem: u64, threads: usize) -> RamResult {
         let per = words.div_ceil(threads);
         std::thread::scope(|s| {
             for (dst, src) in b.chunks_mut(per).zip(a.chunks(per)) {
-                s.spawn(move || dst.copy_from_slice(src));
+                s.spawn(move || {
+                    crate::qos::full_speed_thread();
+                    dst.copy_from_slice(src)
+                });
             }
         });
         t.elapsed().as_secs_f64()
@@ -102,7 +105,10 @@ fn par_chunks(data: &[u64], threads: usize, f: impl Fn(&[u64]) + Sync) {
     std::thread::scope(|s| {
         for c in data.chunks(per) {
             let f = &f;
-            s.spawn(move || f(c));
+            s.spawn(move || {
+                crate::qos::full_speed_thread();
+                f(c)
+            });
         }
     });
 }
@@ -112,7 +118,10 @@ fn par_chunks_mut(data: &mut [u64], threads: usize, f: impl Fn(&mut [u64]) + Syn
     std::thread::scope(|s| {
         for c in data.chunks_mut(per) {
             let f = &f;
-            s.spawn(move || f(c));
+            s.spawn(move || {
+                crate::qos::full_speed_thread();
+                f(c)
+            });
         }
     });
 }

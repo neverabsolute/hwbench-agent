@@ -142,6 +142,10 @@ a run with every accepted result for the same model.
   live clocks to programs without administrator rights.
 * Runs where the OS limits the threads available (VMs, containers) are kept but
   left out of multi-core aggregates.
+* CPU results whose four-thread test runs at less than 2.6 times the single-thread
+  speed (on a CPU with at least four cores) are kept but not counted: the work ran on
+  efficiency cores or was throttled. On Windows the agent opts out of power throttling
+  (EcoQoS), which otherwise moves background programs onto efficiency cores.
 
 Timing can't be proven cryptographically on someone else's machine. These checks
 make a fake result take effort, and because component scores are medians, a few

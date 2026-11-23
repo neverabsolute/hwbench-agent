@@ -3,6 +3,7 @@ mod cpu;
 mod disk;
 mod gpu;
 mod hwinfo;
+mod qos;
 mod ram;
 mod system;
 mod util;
@@ -109,6 +110,7 @@ fn main() {
     PAUSE_AT_END.store(args.pause_at_end, std::sync::atomic::Ordering::Relaxed);
     println!("hwbench {} · https://hwbench.io\n", env!("CARGO_PKG_VERSION"));
 
+    qos::full_speed_process();
     let sys = system::collect();
     let gpus = gpu::list_adapters();
     if args.list_gpus {
