@@ -64,12 +64,12 @@
     }
   },
   "gpu": {
-    "status": "provisional: all references are projected for an RTX 4060 from a measured RTX 5090 (agent 0.6.1). Compute: rated specifications at the efficiency measured on the 5090 (~69% of rated FP32 and bandwidth). Image filter, geometry, fill rate and texturing: the 5090's results times the ratio of the hardware each test is bound by (SMs, raster units, ROPs and texture units, each times boost clock: RTX 4060 24 SMs / 3 GPCs / 48 ROPs / 96 TMUs at 2.46 GHz; RTX 5090 170 SMs / 11 GPCs / 176 ROPs / 680 TMUs at 2.41 GHz). Scene: the geometric mean of the FP32, bandwidth, fill and texture ratios. To be replaced by medians of measured RTX 4060 results.",
+    "status": "provisional: all references are projected for an RTX 4060 from a measured RTX 5090 (agent 0.6.1; the image filter re-measured with 0.6.2, whose filter changed). Compute: rated specifications at the efficiency measured on the 5090 (~69% of rated FP32 and bandwidth). Image filter, geometry, fill rate and texturing: the 5090's results times the ratio of the hardware each test is bound by (SMs, raster units, ROPs and texture units, each times boost clock: RTX 4060 24 SMs / 3 GPCs / 48 ROPs / 96 TMUs at 2.46 GHz; RTX 5090 170 SMs / 11 GPCs / 176 ROPs / 680 TMUs at 2.41 GHz). Scene: the geometric mean of the FP32, bandwidth, fill and texture ratios. To be replaced by medians of measured RTX 4060 results.",
     "ref": {
       "fp32Gflops": 10400,
       "int32Giops": 5800,
       "bandwidthGBs": 190,
-      "blurGpix": 26.0,
+      "blurGpix": 39.8,
       "geometryGtris": 0.86,
       "fillGpix": 131.7,
       "textureGtex": 230.4,
