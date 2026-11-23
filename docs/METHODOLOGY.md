@@ -65,7 +65,7 @@ geometry is generated in the shaders, so every backend does identical work):
 
 | Test | What it measures |
 |---|---|
-| `geometry` | 64×64 quad grids × 1,024 instances (≈8.4 M triangles per frame), depth-tested front to back: vertex work and triangle setup |
+| `geometry` | 64×64 quad grids × 1,024 instances (≈8.4 M triangles per frame), depth-tested front to back: triangle setup, rasterization and depth rejection |
 | `fill` | 32 alpha-blended full-screen layers: blending and render output throughput |
 | `texture` | 8 layers sampling a 2048×2048 texture 8 times per pixel with bilinear filtering: texture units |
 | `scene` | A 2048² shadow-map pass plus a lit, textured pass over 2,000 cubes and a ground plane, with 4-tap filtered shadows: frames per second |
@@ -77,8 +77,11 @@ apps. Compute and 3D sub-scores are weighted geometric means against a reference
 GPU; the GPU score combines them, 40% compute and 60% 3D (weights in
 `scoring/v2.json`). **100 = NVIDIA GeForce RTX 4060.** The compute references are
 projected from its rated specifications at the efficiency these kernels reach on a
-real RTX 5090 (about 69% of rated FP32 throughput and memory bandwidth); the blur
-and 3D references are provisional until calibrated from measured runs.
+real RTX 5090 (about 69% of rated FP32 throughput and memory bandwidth). The image
+filter and 3D references are the 5090's measured results scaled by the ratio of the
+hardware each test is bound by (SMs, raster units, ROPs or texture units, times boost
+clock); the scene uses the geometric mean of those ratios. All are provisional until
+measured RTX 4060 results replace them.
 
 GPU results carry **no proof of work**. A GPU does far more work per second than
 the server could re-check, so GPU results are kept honest by per-model
