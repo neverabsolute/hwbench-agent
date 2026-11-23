@@ -69,7 +69,7 @@
       "fp32Gflops": 10400,
       "int32Giops": 5800,
       "bandwidthGBs": 190,
-      "blurGpix": 43.6,
+      "blurGpix": 26.0,
       "geometryGtris": 0.86,
       "fillGpix": 131.7,
       "textureGtex": 230.4,

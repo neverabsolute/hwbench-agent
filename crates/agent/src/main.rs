@@ -3,6 +3,7 @@ mod cpu;
 mod disk;
 mod gpu;
 mod hwinfo;
+mod load;
 mod qos;
 mod ram;
 mod system;
@@ -25,6 +26,8 @@ struct Args {
     disk_path: Option<std::path::PathBuf>,
     list_gpus: bool,
     json: bool,
+    /// Don't wait for a busy system to settle.
+    no_wait: bool,
     /// Started by double-clicking a downloaded launcher: keep the window open at the end.
     pause_at_end: bool,
 }
@@ -51,6 +54,7 @@ fn parse_args() -> Result<Args, lexopt::Error> {
         disk_path: None,
         list_gpus: false,
         json: false,
+        no_wait: false,
         pause_at_end: false,
     };
     if let Some(code) = code_from_exe_name() {
@@ -70,6 +74,7 @@ fn parse_args() -> Result<Args, lexopt::Error> {
             Long("gpu-index") => args.gpu_index = Some(p.value()?.parse()?),
             Long("list-gpus") => args.list_gpus = true,
             Long("json") => args.json = true,
+            Long("no-wait") => args.no_wait = true,
             Long("all") => args.selection.extend(COMPONENTS.iter().map(|s| s.to_string())),
             Long("no-open") => args.open = false,
             Long("dry-run") => args.dry_run = true,
@@ -87,6 +92,7 @@ fn parse_args() -> Result<Args, lexopt::Error> {
                      --list-gpus     show detected GPUs and exit\n\
                      --gpu-index N   benchmark GPU N from --list-gpus (default: best)\n\
                      --no-open       don't open the results page in a browser\n\
+                     --no-wait       start even if other programs are keeping the computer busy\n\
                      --dry-run       run locally and print results, submit nothing\n\
                      --json          with --dry-run: print the payload that would be submitted\n\
                      --api URL       server (default {DEFAULT_API})",
@@ -128,6 +134,12 @@ fn main() {
     }
     println!("  RAM   {:.1} GiB", sys.memory.total_bytes as f64 / (1u64 << 30) as f64);
     println!("  OS    {} ({})\n", sys.os_version, sys.arch);
+
+    let tested_gpu = match args.gpu_index {
+        Some(i) => gpus.get(i),
+        None => gpus.first(),
+    };
+    let load = load::preflight(tested_gpu.map(|(_, g)| g.device_id), !args.no_wait);
 
     let api = api::Api::new(&args.api);
     let (code, challenge) = if args.dry_run {
@@ -171,6 +183,7 @@ fn main() {
         "deviceId": system::device_id(&sys.cpu.brand),
         "system": &sys,
         "gpus": gpus.iter().map(|(_, g)| g.clone()).collect::<Vec<_>>(),
+        "load": &load,
     });
 
     if wants("cpu") {

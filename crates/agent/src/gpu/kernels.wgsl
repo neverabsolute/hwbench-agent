@@ -55,10 +55,13 @@ fn copy(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
 }
 
 // Image convolution: a 5×5 filter over a 1024×1024 image (from `outu`) into `outf`, staged
-// through workgroup shared memory as image filters do. Each iteration applies the filter
-// once more to the same tile, so p.iters scales the work: 1024×1024 pixels per iteration.
+// through workgroup shared memory as image filters do. Each iteration filters the previous
+// iteration's output (ping-ponging between two tiles), so p.iters scales the work:
+// 1024×1024 pixels per iteration. Every pass depends on the one before, so a compiler can't
+// hoist the filter out of the loop (agent 0.6.1 and earlier re-filtered the same input, and
+// AMD's compiler legitimately computed it once).
 const IMG: u32 = 1024u;
-var<workgroup> tile: array<f32, 400>; // (16 + 4) × (16 + 4)
+var<workgroup> tile: array<f32, 800>; // two (16 + 4) × (16 + 4) tiles
 
 @compute @workgroup_size(16, 16)
 fn blur(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invocation_id) lid: vec3<u32>,
@@ -66,19 +69,24 @@ fn blur(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invocation
   let origin = vec2<i32>(wid.xy * 16u) - vec2<i32>(2, 2);
   for (var t = lid.y * 16u + lid.x; t < 400u; t = t + 256u) {
     let q = clamp(origin + vec2<i32>(i32(t % 20u), i32(t / 20u)), vec2<i32>(0, 0), vec2<i32>(i32(IMG) - 1, i32(IMG) - 1));
-    tile[t] = f32((outu[u32(q.y) * IMG + u32(q.x)] ^ p.salt) & 0xffffu) * (1.0 / 65535.0);
+    let v = f32((outu[u32(q.y) * IMG + u32(q.x)] ^ p.salt) & 0xffffu) * (1.0 / 65535.0);
+    tile[t] = v;
+    tile[400u + t] = v; // the 2-pixel border stays fixed in both tiles
   }
   workgroupBarrier();
-  var acc = 0.0;
+  let centre = (lid.y + 2u) * 20u + lid.x + 2u;
+  var sum = 0.0;
   for (var it = 0u; it < p.iters; it = it + 1u) {
-    var sum = 0.0;
+    let src = (it & 1u) * 400u;
+    sum = 0.0;
     for (var dy = 0u; dy < 5u; dy = dy + 1u) {
       for (var dx = 0u; dx < 5u; dx = dx + 1u) {
-        let w = f32((dx + 1u) * (dy + 1u)) * 0.0044444;
-        sum = sum + tile[(lid.y + dy) * 20u + lid.x + dx] * w;
+        let w = f32((dx + 1u) * (dy + 1u)) * 0.0044444; // weights sum to 1
+        sum = sum + tile[src + (lid.y + dy) * 20u + lid.x + dx] * w;
       }
     }
-    acc = acc * 0.5 + sum;
+    tile[400u - src + centre] = sum;
+    workgroupBarrier();
   }
-  outf[gid.y * IMG + gid.x] = acc;
+  outf[gid.y * IMG + gid.x] = sum;
 }

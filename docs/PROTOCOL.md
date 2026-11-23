@@ -64,6 +64,8 @@ POST /api/v1/sessions/{code}/submit
   },
   "ram": { "readGBs": 61.2, "writeGBs": 40.1, "copyGBs": 35.0, "latencyNs": 82.3, "bufferBytes": 536870912, "threads": 16,
            "ladder": [ { "bytes": 16384, "ns": 1.2 }, …, { "bytes": 268435456, "ns": 78.4 } ] },
+  "load": { "cpuPct": 6.2, "gpuPct": 3, "vramUsedBytes": 1073741824, "vramTotalBytes": 12884901888,   // 0.6.2+; GPU fields optional
+            "waitedMs": 1100, "busy": false },   // sampled just before benchmarking, after waiting up to 30 s for a busy system to settle
   "gpus": [ { "name": "NVIDIA GeForce RTX 4070", "vendorId": 4318, "deviceId": 10118, "deviceType": "DiscreteGpu", "backend": "Vulkan", … } ],
   "gpu": {
     "adapter": { …one entry of "gpus"… },

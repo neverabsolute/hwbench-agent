@@ -43,6 +43,7 @@ hwbench [--session CODE] [--cpu] [--gpu] [--disk] [--ram] [--all]
 --list-gpus      show detected GPUs and exit
 --gpu-index N    benchmark GPU N from --list-gpus (default: a discrete GPU if there is one)
 --no-open        don't open the results page
+--no-wait        start even if other programs are keeping the computer busy
 --dry-run        run locally and submit nothing
 --json           with --dry-run, print the payload that would be submitted
 --api URL        server to submit to (default https://hwbench.io)

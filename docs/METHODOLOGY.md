@@ -58,7 +58,7 @@ Compute (shaders in `crates/agent/src/gpu/kernels.wgsl`):
 | `fp32` | 8 independent vec4 fused multiply-add chains: 64 FLOP per iteration |
 | `int32` | 4 independent multiply/add/xor/shift chains: 16 integer ops per iteration |
 | `copy` | Buffer-to-buffer copy over up to 512 MiB: read + write bandwidth |
-| `blur` | A 5×5 filter over a 1024×1024 image, staged through workgroup shared memory |
+| `blur` | A 5×5 filter applied repeatedly to a 1024×1024 image, staged through workgroup shared memory; each pass filters the previous pass's output |
 
 3D, rendered off-screen at 1920×1080 (`crates/agent/src/gpu/render.wgsl`; all
 geometry is generated in the shaders, so every backend does identical work):
@@ -182,3 +182,11 @@ comparable and aren't counted; the site turns older agents away. Provisional
 reference values inside a version (currently the CPU multi-core normalizer and the
 GPU and storage references) may be recalibrated in place; stored results are
 rescored from their raw metrics when that happens.
+
+Agent 0.6.2 changed the image filter. Earlier agents filtered the same input on every
+pass, and AMD's shader compiler correctly worked out that it only needed to do it once,
+so Radeon cards scored many times their real image-filter speed. GPU results from
+earlier agents aren't counted. 0.6.2 also checks, before it starts, whether other
+programs are keeping the computer busy (CPU, GPU or graphics memory), says which, and
+waits up to 30 seconds for them to settle. Runs that start busy still count, and their
+results page says so.
