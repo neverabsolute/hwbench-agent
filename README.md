@@ -59,11 +59,13 @@ core counts, memory size, OS and kernel version; on Linux and Windows, the CPU c
 speeds seen during the test; the motherboard model and BIOS version (or the computer's
 model, for prebuilt PCs and laptops); each memory module's size, type, speed,
 manufacturer and part number; CPU cache sizes; the GPU's memory size, driver version,
-maximum clocks, PCIe link and power limit; the names, filesystem types and sizes of
-mounted drives; and a salted hash of the OS machine id, which lets the server group
+maximum clocks, PCIe link and power limit; the device names or volume labels,
+filesystem types and sizes of mounted drives (a volume label is whatever you named the
+drive); and a salted hash of the OS machine id, which lets the server group
 repeat runs without learning the id. It doesn't send serial numbers, asset tags,
-usernames, hostnames or MAC addresses. The server
-sees your IP address and stores only a keyed hash of it.
+your username, your hostname or MAC addresses. The server stores only a keyed hash of your IP
+address with benchmark runs. The site's [privacy policy](https://hwbench.io/privacy)
+covers everything else, including accounts.
 
 ## Results are checked
 
