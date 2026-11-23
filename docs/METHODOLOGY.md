@@ -1,12 +1,13 @@
 # Scoring methodology
 
 These are the formulas behind every hwbench score.
-[`scoring/v1.json`](../scoring/v1.json) holds the exact values, and the site
+[`scoring/v2.json`](../scoring/v2.json) holds the exact values, and the site
 reads that same file.
 
 ## CPU
 
-Five deterministic workloads (see `crates/kernels`):
+Ten deterministic workloads (see `crates/kernels`). The first five are throughput
+tests; the last five behave like real programs:
 
 | Kernel | What it stresses |
 |---|---|
@@ -15,15 +16,20 @@ Five deterministic workloads (see `crates/kernels`):
 | `sort` | Memory access patterns and branch prediction (unstable sort of 512 Ki u64) |
 | `float` | Double-precision throughput (128×128 matrix multiply) |
 | `physics` | Mixed FP with division and sqrt (N-body step) |
+| `search` | Game AI: alpha-beta search of Othello positions with bitboards (unpredictable branches) |
+| `script` | A bytecode interpreter running a small program (dispatch-heavy, like JavaScript or Python engines) |
+| `render` | A path tracer rendering a small scene (floating point with irregular branches) |
+| `crypto` | AES-256-GCM, as in HTTPS and disk encryption (uses AES and carry-less multiply instructions where present) |
+| `parse` | Generating and parsing JSON-like text (browsers, APIs, config files) |
 
-Each kernel runs for a fixed 1.5 s window at 1 thread, 4 threads, and all
+Each kernel runs for a fixed 0.8 s window at 1 thread, 4 threads, and all
 available threads. A sub-score is the geometric mean, across kernels, of
 `chunks/sec ÷ reference single-thread chunks/sec × 100`. So the reference CPU
 scores 100 single-core, about 400 quad-core, and more multi-core.
 
 The headline CPU score is a weighted geometric mean of the three sub-scores,
 each divided by what the reference CPU scores (single 100, quad 400, multi-core
-1000; weights and normalizers in `scoring/v1.json`). The multi-core normalizer comes
+1000; weights and normalizers in `scoring/v2.json`). The multi-core normalizer comes
 from modeling an i7-12700K's P-cores and E-cores with the per-workload thread
 scaling measured on a Ryzen 9 9950X3D (about 985); public all-core ratios between
 the two chips give about 980. A measured full-thread i7-12700K result will replace
@@ -36,29 +42,43 @@ Multi-threaded read, write and copy bandwidth over a buffer larger than any
 CPU cache, plus dependent-load latency over a random cycle of cache lines.
 Score: geometric mean of the four ratios against the reference.
 
+The agent also measures that latency at working-set sizes from 16 KiB to 256 MiB
+(a "ladder"). Each flat stretch is a cache level and each rise is that level running
+out. The ladder is shown with results but isn't scored.
+
 ## GPU
 
-Three compute shaders, run through wgpu on the platform's native API (Metal on
-macOS, DX12 on Windows, Vulkan on Linux):
+Eight tests, run through wgpu on the platform's native API (Metal on macOS, DX12
+on Windows, Vulkan on Linux), in two groups.
+
+Compute (shaders in `crates/agent/src/gpu/kernels.wgsl`):
 
 | Test | What it measures |
 |---|---|
 | `fp32` | 8 independent vec4 fused multiply-add chains: 64 FLOP per iteration |
 | `int32` | 4 independent multiply/add/xor/shift chains: 16 integer ops per iteration |
 | `copy` | Buffer-to-buffer copy over up to 512 MiB: read + write bandwidth |
+| `blur` | A 5×5 filter over a 1024×1024 image, staged through workgroup shared memory |
 
-Each test first sizes its dispatch so one dispatch takes about 30 ms (long enough
-to time, far below OS GPU watchdogs), then repeats it for 2 s. The **fastest**
-dispatch counts, which filters out interference from the desktop compositor and
-background apps. Score: weighted geometric mean against a reference GPU (weights in
-`scoring/v1.json`). **100 = NVIDIA GeForce RTX 4060**, currently projected from
-its rated specifications at the efficiency these kernels reach on a real
-RTX 5090 (about 69% of rated FP32 throughput and memory bandwidth). It will be
-replaced by measured RTX 4060 results.
+3D, rendered off-screen at 1920×1080 (`crates/agent/src/gpu/render.wgsl`; all
+geometry is generated in the shaders, so every backend does identical work):
 
-These are compute tests. Gaps between GPUs are usually larger here than in
-games, which are often limited by the CPU, the resolution, or fixed-function
-hardware.
+| Test | What it measures |
+|---|---|
+| `geometry` | 64×64 quad grids × 1,024 instances (≈8.4 M triangles per frame), depth-tested front to back: vertex work and triangle setup |
+| `fill` | 32 alpha-blended full-screen layers: blending and render output throughput |
+| `texture` | 8 layers sampling a 2048×2048 texture 8 times per pixel with bilinear filtering: texture units |
+| `scene` | A 2048² shadow-map pass plus a lit, textured pass over 2,000 cubes and a ground plane, with 4-tap filtered shadows: frames per second |
+
+Each test first sizes its batch so one batch takes about 30 ms (long enough to
+time, far below OS GPU watchdogs), then repeats it for 2 s. The **fastest** batch
+counts, which filters out interference from the desktop compositor and background
+apps. Compute and 3D sub-scores are weighted geometric means against a reference
+GPU; the GPU score combines them, 40% compute and 60% 3D (weights in
+`scoring/v2.json`). **100 = NVIDIA GeForce RTX 4060.** The compute references are
+projected from its rated specifications at the efficiency these kernels reach on a
+real RTX 5090 (about 69% of rated FP32 throughput and memory bandwidth); the blur
+and 3D references are provisional until calibrated from measured runs.
 
 GPU results carry **no proof of work**. A GPU does far more work per second than
 the server could re-check, so GPU results are kept honest by per-model
@@ -82,7 +102,7 @@ own cache is not, which matches how applications experience the drive.
 | 4K random read / write QD32 | 32 threads issuing requests in parallel: peak IOPS |
 
 Score: weighted geometric mean against a reference drive (weights in
-`scoring/v1.json`; 4K QD1 reads weigh most). Results where the OS cache couldn't
+`scoring/v2.json`; 4K QD1 reads weigh most). Results where the OS cache couldn't
 be bypassed, or that come from virtual disks, are recorded but not counted.
 Storage results are sensitive to other disk activity on the machine.
 
@@ -91,7 +111,7 @@ Storage results are sensitive to other disk activity on the machine.
 There's no single right weighting: a gamer and someone who renders video value
 different things. So CPU and storage scores also come in three **profiles**
 that reweight the *same* measured sub-scores (weights and rationale in
-`scoring/v1.json`):
+`scoring/v2.json`):
 
 | CPU profile | Single | Quad | Multi |
 |---|---|---|---|
@@ -153,8 +173,9 @@ fakes move them very little.
 
 ## Changes
 
-Scoring changes get a new version file, and all stored runs are rescored from
-their raw metrics. Old versions stay in this repo. Provisional reference values
-inside a version (currently the CPU multi-core normalizer and the GPU and storage
-references) may be recalibrated in place; stored results are rescored from their
-raw metrics when that happens.
+Version 2 added five CPU workloads, the GPU 3D tests and the image filter, and
+the memory latency ladder. Results from version 1 (agents before 0.6.0) aren't
+comparable and aren't counted; the site turns older agents away. Provisional
+reference values inside a version (currently the CPU multi-core normalizer and the
+GPU and storage references) may be recalibrated in place; stored results are
+rescored from their raw metrics when that happens.

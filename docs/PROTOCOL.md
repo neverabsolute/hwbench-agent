@@ -21,17 +21,19 @@ Sessions expire after 30 minutes and are rate limited per IP.
 
 ```
 POST /api/v1/sessions/{code}/claim
-{ "protocol": 1, "agentVersion": "0.1.0", "kernelsVersion": 1, "os": "linux", "arch": "x86_64" }
+{ "protocol": 1, "agentVersion": "0.6.0", "kernelsVersion": 2, "os": "linux", "arch": "x86_64" }
 → 200 {
   "seed": "<64 hex chars>",
   "selection": ["cpu", "ram"],
-  "cpu": { "kernels": ["hash","compress","sort","float","physics"], "threads": [1, 4, 0], "windowMs": 1500 },
+  "cpu": { "kernels": ["hash","compress","sort","float","physics","search","script","render","crypto","parse"],
+           "threads": [1, 4, 0], "windowMs": 800 },
   "gpu": { "windowMs": 2000 },
   "submitBy": "…"
 }
 ```
 
 A session can be claimed once. `threads: 0` means "all logical processors".
+The server answers `426` to agents older than 0.6.0 or with another `kernelsVersion`.
 The seed only exists from this point on, so proofs cannot be precomputed.
 
 ## 3. Submit
@@ -40,7 +42,7 @@ The seed only exists from this point on, so proofs cannot be precomputed.
 POST /api/v1/sessions/{code}/submit
 {
   "protocol": 1,
-  "agent": { "version": "0.1.0", "kernelsVersion": 1, "target": "x86_64-unknown-linux-gnu" },
+  "agent": { "version": "0.6.0", "kernelsVersion": 2, "target": "x86_64-unknown-linux-gnu" },
   "deviceId": "<hex>",          // salted hash of a stable machine id; never the raw id
   "system": {
     …os, cpu, memory and drives; see crates/agent/src/system.rs…
@@ -60,12 +62,15 @@ POST /api/v1/sessions/{code}/submit
     ],
     "clocks": { "singleMaxMhz": 5602, "allCoreMhz": 5150 }   // optional, Linux only (Windows 0.5.0 sent unreliable readings; servers ignore them)
   },
-  "ram": { "readGBs": 61.2, "writeGBs": 40.1, "copyGBs": 35.0, "latencyNs": 82.3 },
+  "ram": { "readGBs": 61.2, "writeGBs": 40.1, "copyGBs": 35.0, "latencyNs": 82.3, "bufferBytes": 536870912, "threads": 16,
+           "ladder": [ { "bytes": 16384, "ns": 1.2 }, …, { "bytes": 268435456, "ns": 78.4 } ] },
   "gpus": [ { "name": "NVIDIA GeForce RTX 4070", "vendorId": 4318, "deviceId": 10118, "deviceType": "DiscreteGpu", "backend": "Vulkan", … } ],
   "gpu": {
     "adapter": { …one entry of "gpus"… },
-    "fp32Gflops": 21400.5, "int32Giops": 11050.2, "bandwidthGBs": 452.7, "bufferBytes": 536870912,
-    "tests": { "fp32": { "opsPerDispatch": …, "bestNs": …, "medianNs": …, "runs": …, "iters": … }, … },
+    "fp32Gflops": 21400.5, "int32Giops": 11050.2, "bandwidthGBs": 452.7, "blurGpix": 41.3,
+    "geometryGtris": 5.1, "fillGpix": 82.4, "textureGtex": 151.0, "sceneFps": 1630.2, "bufferBytes": 536870912,
+    "tests": { "fp32": { "opsPerDispatch": …, "bestNs": …, "medianNs": …, "runs": …, "iters": … },
+               …"int32", "copy", "blur", "geometry", "fill", "texture", "scene" alike… },
     "details": {                      // optional (0.5+); every field is optional
       "vramBytes": 12884901888, "driverVersion": "566.36", "coreClockMaxMhz": 2100, "memoryClockMaxMhz": 7501,
       "pcieGen": 4, "pcieGenMax": 4, "pcieWidth": 16, "pcieWidthMax": 16, "powerLimitW": 170,
@@ -78,6 +83,11 @@ POST /api/v1/sessions/{code}/submit
 ```
 
 A GPU that can't be benchmarked is reported as `"gpu": { "error": "…" }`.
+
+For the 3D tests, `opsPerDispatch` is the work in one timed batch: triangles
+(`geometry`), blended pixels (`fill`), texture samples (`texture`) or frames
+(`scene`); `iters` is the number of frames in the batch. The server recomputes
+every rate from `opsPerDispatch` and `bestNs` and rejects summaries that don't match.
 
 `pcieGen` is the highest generation the card and slot support together (from nvidia-smi),
 or absent; `pcieGenMax` is the card's own. `pcieWidth` is the current lane count. The

@@ -1,21 +1,31 @@
 {
-  "version": 1,
+  "version": 2,
   "status": "provisional",
-  "reference": "Intel Core i7-12700K, single-thread rates measured on Linux. 100 points = reference single-thread rate.",
+  "reference": "Intel Core i7-12700K, single-thread rates measured on Linux with the version 2 kernels. 100 points = reference single-thread rate.",
   "cpu": {
     "kernels": [
       "hash",
       "compress",
       "sort",
       "float",
-      "physics"
+      "physics",
+      "search",
+      "script",
+      "render",
+      "crypto",
+      "parse"
     ],
     "refChunksPerSec": {
       "hash": 200,
       "compress": 125,
       "sort": 155,
       "float": 108,
-      "physics": 101
+      "physics": 101,
+      "search": 165,
+      "script": 204,
+      "render": 142,
+      "crypto": 265,
+      "parse": 174
     },
     "subscores": {
       "single": {
@@ -54,19 +64,39 @@
     }
   },
   "gpu": {
-    "status": "provisional: reference projected from RTX 4060 specifications at the efficiency measured on a real RTX 5090 (~69% of rated FP32 and bandwidth); will be replaced by measured RTX 4060 results",
+    "status": "provisional: compute references are projected from RTX 4060 specifications at the efficiency measured on an RTX 5090 (~69% of rated FP32 and bandwidth); blur and 3D references are placeholders until calibrated from measured runs",
     "ref": {
       "fp32Gflops": 10400,
       "int32Giops": 5800,
-      "bandwidthGBs": 190
+      "bandwidthGBs": 190,
+      "blurGpix": 40,
+      "geometryGtris": 4,
+      "fillGpix": 70,
+      "textureGtex": 140,
+      "sceneFps": 1500
+    },
+    "compute": {
+      "weights": {
+        "fp32Gflops": 0.35,
+        "int32Giops": 0.15,
+        "bandwidthGBs": 0.3,
+        "blurGpix": 0.2
+      }
+    },
+    "render": {
+      "weights": {
+        "geometryGtris": 0.2,
+        "fillGpix": 0.25,
+        "textureGtex": 0.25,
+        "sceneFps": 0.3
+      }
     },
     "overall": {
-      "formula": "100 * (fp32/ref)^0.4 * (int32/ref)^0.2 * (bandwidth/ref)^0.4"
-    },
-    "weights": {
-      "fp32": 0.4,
-      "int32": 0.2,
-      "bandwidth": 0.4
+      "weights": {
+        "compute": 0.4,
+        "render": 0.6
+      },
+      "formula": "compute = 100 * prod((metric/ref)^w) over compute weights; render (3D) likewise; overall = 100 * (compute/100)^0.4 * (render/100)^0.6"
     },
     "reference": "NVIDIA GeForce RTX 4060 (projected). 100 points = reference GPU."
   },

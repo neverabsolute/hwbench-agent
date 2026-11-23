@@ -22,13 +22,13 @@ administrator rights.
 
 | Component | Tests | Time |
 |---|---|---|
-| CPU | Five workloads (hashing, compression, sorting, matrix math, physics) at 1, 4 and all threads | ~25 s |
-| GPU | FP32 and INT32 compute and memory bandwidth through wgpu (Metal, DirectX 12 or Vulkan) | ~10 s |
+| CPU | Ten workloads at 1, 4 and all threads: hashing, compression, sorting, matrix math, physics, game AI search, a bytecode interpreter, ray tracing, AES encryption and JSON parsing | ~30 s |
+| GPU | Compute (FP32, INT32, memory bandwidth, an image filter) and 3D at 1080p (geometry, fill rate, texturing, a shadowed scene) through wgpu (Metal, DirectX 12 or Vulkan) | ~20 s |
 | Storage | Sequential and 4K random reads and writes at queue depths 1 and 32, bypassing the OS cache | ~15 s |
-| Memory | Read, write and copy bandwidth and latency | ~5 s |
+| Memory | Read, write and copy bandwidth, latency, and latency across cache levels | ~6 s |
 
 [docs/METHODOLOGY.md](docs/METHODOLOGY.md) explains how results become scores, and
-[`scoring/v1.json`](scoring/v1.json) holds every weight and reference value the site
+[`scoring/v2.json`](scoring/v2.json) holds every weight and reference value the site
 uses.
 
 ## Options
