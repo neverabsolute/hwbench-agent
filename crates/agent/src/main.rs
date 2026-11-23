@@ -281,7 +281,6 @@ fn main() {
     let _ = std::io::stdout().flush();
     let done = api.submit(&code, &body).unwrap_or_else(|e| fail(&e));
     println!("done.\n\nYour results: {}\n", done.url);
-    let _ = done.public_id;
     if args.open {
         let _ = webbrowser::open(&done.url);
     }

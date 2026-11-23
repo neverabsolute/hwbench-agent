@@ -131,6 +131,8 @@ const WORDS: [&str; 32] = [
     "drive", "speed", "data", "on", "random", "sequential", "write", "read", "fast", "test",
 ];
 
+// Kernel code defines proof digests the server verifies: don't restyle it.
+#[allow(clippy::manual_is_multiple_of)]
 fn compress(rng: &mut Rng, out: &mut blake3::Hasher) {
     // Text-like input from a small vocabulary plus random noise bytes so the
     // compressor exercises both matching and literal paths.

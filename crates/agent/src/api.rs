@@ -56,7 +56,6 @@ pub struct CpuPlan {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Submitted {
-    pub public_id: String,
     pub url: String,
 }
 
