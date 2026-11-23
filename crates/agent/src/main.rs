@@ -78,7 +78,7 @@ fn parse_args() -> Result<Args, lexopt::Error> {
             Long("help") | Short('h') => {
                 println!(
                     "hwbench {} — https://hwbench.io\n\n\
-                     USAGE: hwbench [--session CODE] [--cpu] [--gpu] [--ram] [--all]\n\n\
+                     USAGE: hwbench [--session CODE] [--cpu] [--gpu] [--disk] [--ram] [--all]\n\n\
                      --session CODE  use a session created on hwbench.io/run\n\
                      --cpu, --gpu, --ram, --disk  pick components (default: all)\n\
                      --disk-path DIR test the drive holding DIR (default: temp folder, or /var/tmp if it's in RAM)\n\
