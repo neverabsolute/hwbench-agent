@@ -223,11 +223,15 @@ fn main() {
             }
             // The handle from startup can go stale during the CPU tests; the GPU is looked up again by id.
             Some((_, report)) => {
-                print!("Benchmarking GPU: {}… ", report.name);
+                print!("Benchmarking GPU: {} (compute and 3D, about 20s)… ", report.name);
                 let _ = std::io::stdout().flush();
                 match gpu::run_with_retry(report, window) {
                     Ok(mut r) => {
-                        println!("fp32 {:.0} GFLOPS · int32 {:.0} GIOPS · bandwidth {:.0} GB/s", r.fp32_gflops, r.int32_giops, r.bandwidth_gbs);
+                        println!("done");
+                        println!("      compute: fp32 {:.0} GFLOPS · int32 {:.0} GIOPS · bandwidth {:.0} GB/s · blur {:.1} Gpix/s",
+                            r.fp32_gflops, r.int32_giops, r.bandwidth_gbs, r.blur_gpix);
+                        println!("      3D: geometry {:.2} Gtris/s · fill {:.1} Gpix/s · texture {:.0} Gtex/s · scene {:.0} fps",
+                            r.geometry_gtris, r.fill_gpix, r.texture_gtex, r.scene_fps);
                         r.details = gpu::details::collect(r.adapter.vendor_id, r.adapter.device_id, &r.adapter.name);
                         if let Some(d) = &r.details {
                             let mut parts = Vec::new();

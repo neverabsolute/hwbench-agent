@@ -15,6 +15,15 @@ pub struct RamResult {
     pub latency_ns: f64,
     pub buffer_bytes: u64,
     pub threads: usize,
+    /// Load-to-use latency at growing working-set sizes: the steps show L1, L2, L3 and RAM.
+    pub ladder: Vec<LadderPoint>,
+}
+
+#[derive(Serialize, Debug, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub struct LadderPoint {
+    pub bytes: u64,
+    pub ns: f64,
 }
 
 const MIB: usize = 1 << 20;
@@ -58,15 +67,30 @@ pub fn run(seed: &[u8; 32], total_mem: u64, threads: usize) -> RamResult {
         write_gbs: bytes as f64 / write / 1e9,
         // copy moves the buffer twice (read + write)
         copy_gbs: 2.0 * bytes as f64 / copy / 1e9,
-        latency_ns: latency(seed, bytes.min(256 * MIB)),
+        latency_ns: latency(seed, bytes.min(256 * MIB), 8_000_000),
         buffer_bytes: bytes as u64,
         threads,
+        ladder: ladder(seed, bytes.min(256 * MIB)),
     }
+}
+
+/// 16 KiB, 32 KiB … up to `max_bytes` (powers of two), ~25 ms of chasing each.
+fn ladder(seed: &[u8; 32], max_bytes: usize) -> Vec<LadderPoint> {
+    let mut out = Vec::new();
+    let mut size = 16 * 1024;
+    while size <= max_bytes {
+        // Short probe to size the real measurement.
+        let probe = latency(seed, size, 50_000);
+        let hops = ((25e6 / probe.max(0.2)) as usize).clamp(100_000, 30_000_000);
+        out.push(LadderPoint { bytes: size as u64, ns: latency(seed, size, hops) });
+        size *= 2;
+    }
+    out
 }
 
 /// Dependent loads around a random cycle of cache lines (Sattolo's algorithm),
 /// so neither the prefetcher nor out-of-order execution can hide latency.
-fn latency(seed: &[u8; 32], bytes: usize) -> f64 {
+fn latency(seed: &[u8; 32], bytes: usize, hops: usize) -> f64 {
     const LINE_WORDS: usize = 8; // 64-byte lines
     let lines = bytes / 64;
     let mut order: Vec<u32> = (0..lines as u32).collect();
@@ -82,9 +106,8 @@ fn latency(seed: &[u8; 32], bytes: usize) -> f64 {
         buf[from * 16] = to as u32;
     }
     drop(order);
-    let hops = 8_000_000usize;
     let mut p = 0usize;
-    for _ in 0..200_000 {
+    for _ in 0..(lines * 2).min(200_000) {
         p = buf[p * 16] as usize; // warm TLB / page in
     }
     let t = Instant::now();
@@ -130,9 +153,13 @@ fn par_chunks_mut(data: &mut [u64], threads: usize, f: impl Fn(&mut [u64]) + Syn
 mod tests {
     #[test]
     fn payload_keys_match_protocol() {
-        let r = super::RamResult { read_gbs: 1.0, write_gbs: 1.0, copy_gbs: 1.0, latency_ns: 1.0, buffer_bytes: 1, threads: 1 };
+        let r = super::RamResult {
+            read_gbs: 1.0, write_gbs: 1.0, copy_gbs: 1.0, latency_ns: 1.0, buffer_bytes: 1, threads: 1,
+            ladder: vec![super::LadderPoint { bytes: 16384, ns: 1.0 }],
+        };
         let v = serde_json::to_value(&r).unwrap();
-        for k in ["readGBs", "writeGBs", "copyGBs", "latencyNs", "bufferBytes", "threads"] {
+        assert!(v["ladder"][0].get("bytes").is_some() && v["ladder"][0].get("ns").is_some());
+        for k in ["readGBs", "writeGBs", "copyGBs", "latencyNs", "bufferBytes", "threads", "ladder"] {
             assert!(v.get(k).is_some(), "missing key {k}: {v}");
         }
     }

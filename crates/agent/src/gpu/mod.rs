@@ -5,6 +5,7 @@
 //! per-model distributions and theoretical-peak ceilings instead.
 
 pub mod details;
+mod render;
 
 use serde::Serialize;
 use std::time::{Duration, Instant};
@@ -16,6 +17,8 @@ const FP32_FLOP_PER_ITER: f64 = 64.0;
 const INT32_OPS_PER_ITER: f64 = 16.0;
 const TARGET_DISPATCH: Duration = Duration::from_millis(30);
 const MAX_ITERS: u32 = 1 << 22;
+/// Blur image side; must match IMG in kernels.wgsl (and fit in the `outf` buffer).
+const BLUR_IMG: u32 = 1024;
 
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -48,6 +51,13 @@ pub struct GpuResult {
     pub int32_giops: f64,
     #[serde(rename = "bandwidthGBs")]
     pub bandwidth_gbs: f64,
+    /// 5×5 image filter, billions of pixels per second.
+    pub blur_gpix: f64,
+    /// 3D: billions of triangles, pixels (blended) and texture samples per second; scene frames per second.
+    pub geometry_gtris: f64,
+    pub fill_gpix: f64,
+    pub texture_gtex: f64,
+    pub scene_fps: f64,
     pub buffer_bytes: u64,
     pub tests: std::collections::BTreeMap<&'static str, TestResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -154,7 +164,7 @@ struct Bench {
     queue: wgpu::Queue,
     params: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
-    pipelines: [wgpu::ComputePipeline; 3],
+    pipelines: [wgpu::ComputePipeline; 4],
     buffer_bytes: u64,
     /// First device error or loss seen during the run (wgpu would otherwise panic).
     failure: std::sync::Arc<std::sync::Mutex<Option<String>>>,
@@ -250,12 +260,12 @@ impl Bench {
                 cache: None,
             })
         };
-        let pipelines = [make("fp32"), make("int32"), make("copy")];
+        let pipelines = [make("fp32"), make("int32"), make("copy"), make("blur")];
         Ok(Bench { device, queue, params, bind_group, pipelines, buffer_bytes, failure })
     }
 
     /// Run one dispatch and return its wall-clock duration (submit → completion).
-    fn dispatch(&self, kernel: usize, iters: u32, workgroups: u32) -> Duration {
+    fn dispatch(&self, kernel: usize, iters: u32, workgroups: (u32, u32)) -> Duration {
         let len = (self.buffer_bytes / 4) as u32;
         let p = [iters, 0x5eed_u32 ^ iters, len, 0];
         self.queue.write_buffer(&self.params, 0, unsafe { std::slice::from_raw_parts(p.as_ptr().cast::<u8>(), 16) });
@@ -264,7 +274,7 @@ impl Bench {
             let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None, timestamp_writes: None });
             pass.set_pipeline(&self.pipelines[kernel]);
             pass.set_bind_group(0, &self.bind_group, &[]);
-            pass.dispatch_workgroups(workgroups, 1, 1);
+            pass.dispatch_workgroups(workgroups.0, workgroups.1, 1);
         }
         // Make sure the parameter upload isn't counted in the timing.
         let _ = self.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None });
@@ -282,7 +292,11 @@ impl Bench {
     }
 
     fn measure(&self, kernel: usize, window: Duration, ops_per_iter_dispatch: impl Fn(u32) -> f64) -> TestResult {
-        let workgroups = if kernel == 2 { 4096 } else { INVOCATIONS / WG };
+        let workgroups = match kernel {
+            2 => (4096, 1),
+            3 => (BLUR_IMG / 16, BLUR_IMG / 16),
+            _ => (INVOCATIONS / WG, 1),
+        };
         // Calibrate: grow work until one dispatch is long enough to time reliably.
         let mut iters = if kernel == 2 { 1 } else { 64 };
         if kernel != 2 {
@@ -328,7 +342,7 @@ pub fn run(adapter: &wgpu::Adapter, report: AdapterReport, window: Duration) -> 
     // Warm up so clocks ramp before measuring.
     let warm = Instant::now();
     while warm.elapsed() < Duration::from_millis(800) {
-        b.dispatch(0, 256, INVOCATIONS / WG);
+        b.dispatch(0, 256, (INVOCATIONS / WG, 1));
     }
     let inv = INVOCATIONS as f64;
     b.check()?;
@@ -339,13 +353,33 @@ pub fn run(adapter: &wgpu::Adapter, report: AdapterReport, window: Duration) -> 
     let half = (b.buffer_bytes / 2) as f64;
     let copy = b.measure(2, window, |_| 2.0 * half); // read half + write half
     b.check()?;
+    let pixels = (BLUR_IMG * BLUR_IMG) as f64;
+    let blur = b.measure(3, window, |it| pixels * it as f64);
+    b.check()?;
+
+    let r3d = render::Render::new(&b.device, &b.queue, 0x5eed);
+    let failed = || b.failure.lock().unwrap().is_some();
+    let geometry = r3d.measure(0, window, render::GEOM_TRIANGLES_PER_FRAME, &failed);
+    b.check()?;
+    let fill = r3d.measure(1, window, render::FILL_PIXELS_PER_FRAME, &failed);
+    b.check()?;
+    let texture = r3d.measure(2, window, render::TEX_SAMPLES_PER_FRAME, &failed);
+    b.check()?;
+    let scene = r3d.measure(3, window, 1.0, &failed);
+    b.check()?;
+
     let rate = |t: &TestResult| t.ops_per_dispatch / (t.best_ns as f64 / 1e9);
-    let mut tests = std::collections::BTreeMap::new();
-    let (f, i, c) = (rate(&fp32) / 1e9, rate(&int32) / 1e9, rate(&copy) / 1e9);
-    tests.insert("fp32", fp32);
-    tests.insert("int32", int32);
-    tests.insert("copy", copy);
-    Ok(GpuResult { adapter: report, fp32_gflops: f, int32_giops: i, bandwidth_gbs: c, buffer_bytes: b.buffer_bytes, tests, details: None })
+    let g = |t: &TestResult| rate(t) / 1e9;
+    let mut result = GpuResult {
+        adapter: report,
+        fp32_gflops: g(&fp32), int32_giops: g(&int32), bandwidth_gbs: g(&copy), blur_gpix: g(&blur),
+        geometry_gtris: g(&geometry), fill_gpix: g(&fill), texture_gtex: g(&texture), scene_fps: rate(&scene),
+        buffer_bytes: b.buffer_bytes, tests: Default::default(), details: None,
+    };
+    for (k, t) in [("fp32", fp32), ("int32", int32), ("copy", copy), ("blur", blur), ("geometry", geometry), ("fill", fill), ("texture", texture), ("scene", scene)] {
+        result.tests.insert(k, t);
+    }
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -365,10 +399,11 @@ mod tests {
                 name: "x".into(), vendor_id: 1, device_id: 1, device_type: "DiscreteGpu".into(),
                 backend: "Vulkan".into(), driver: String::new(), driver_info: String::new(),
             },
-            fp32_gflops: 1.0, int32_giops: 1.0, bandwidth_gbs: 1.0, buffer_bytes: 1, tests, details: None,
+            fp32_gflops: 1.0, int32_giops: 1.0, bandwidth_gbs: 1.0, blur_gpix: 1.0, geometry_gtris: 1.0, fill_gpix: 1.0,
+            texture_gtex: 1.0, scene_fps: 1.0, buffer_bytes: 1, tests, details: None,
         };
         let v = serde_json::to_value(&r).unwrap();
-        for k in ["adapter", "fp32Gflops", "int32Giops", "bandwidthGBs", "bufferBytes", "tests"] {
+        for k in ["adapter", "fp32Gflops", "int32Giops", "bandwidthGBs", "blurGpix", "geometryGtris", "fillGpix", "textureGtex", "sceneFps", "bufferBytes", "tests"] {
             assert!(v.get(k).is_some(), "missing key {k}: {v}");
         }
         for k in ["name", "vendorId", "deviceId", "deviceType", "backend", "driver", "driverInfo"] {

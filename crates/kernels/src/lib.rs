@@ -13,8 +13,10 @@
 
 use sha2::{Digest as _, Sha256};
 
+mod apps;
+
 /// Bump whenever any kernel's output for a given input changes.
-pub const KERNELS_VERSION: u32 = 1;
+pub const KERNELS_VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
@@ -29,9 +31,22 @@ pub enum Kernel {
     Float = 3,
     /// N-body style particle step using only +, -, *, / and sqrt (mixed FP).
     Physics = 4,
+    /// Alpha-beta search of Othello positions (game AI; unpredictable branches).
+    Search = 5,
+    /// Bytecode interpreter running a small program (scripting engines; dispatch).
+    Script = 6,
+    /// Path tracer rendering a small scene (rendering; irregular floating point).
+    Render = 7,
+    /// AES-256-GCM encryption (TLS, disk encryption; crypto instructions where present).
+    Crypto = 8,
+    /// Generating and parsing JSON-like text (browsers, APIs, config files).
+    Parse = 9,
 }
 
-pub const ALL_KERNELS: [Kernel; 5] = [Kernel::Hash, Kernel::Compress, Kernel::Sort, Kernel::Float, Kernel::Physics];
+pub const ALL_KERNELS: [Kernel; 10] = [
+    Kernel::Hash, Kernel::Compress, Kernel::Sort, Kernel::Float, Kernel::Physics,
+    Kernel::Search, Kernel::Script, Kernel::Render, Kernel::Crypto, Kernel::Parse,
+];
 
 impl Kernel {
     pub fn from_u32(v: u32) -> Option<Kernel> {
@@ -44,6 +59,11 @@ impl Kernel {
             Kernel::Sort => "sort",
             Kernel::Float => "float",
             Kernel::Physics => "physics",
+            Kernel::Search => "search",
+            Kernel::Script => "script",
+            Kernel::Render => "render",
+            Kernel::Crypto => "crypto",
+            Kernel::Parse => "parse",
         }
     }
     pub fn from_name(s: &str) -> Option<Kernel> {
@@ -109,6 +129,11 @@ pub fn run_chunk(seed: &[u8; 32], kernel: Kernel, index: u32) -> [u8; 32] {
         Kernel::Sort => sort(&mut rng, &mut out),
         Kernel::Float => float(&mut rng, &mut out),
         Kernel::Physics => physics(&mut rng, &mut out),
+        Kernel::Search => apps::search(&mut rng, &mut out),
+        Kernel::Script => apps::script(&mut rng, &mut out),
+        Kernel::Render => apps::render(&mut rng, &mut out),
+        Kernel::Crypto => apps::crypto(&mut rng, &mut out),
+        Kernel::Parse => apps::parse(&mut rng, &mut out),
     }
     *out.finalize().as_bytes()
 }
@@ -125,7 +150,7 @@ fn hash(rng: &mut Rng, out: &mut blake3::Hasher) {
     out.update(&d);
 }
 
-const WORDS: [&str; 32] = [
+pub(crate) const WORDS: [&str; 32] = [
     "the", "benchmark", "processor", "memory", "of", "and", "graphics", "storage", "cache", "thread",
     "a", "to", "in", "latency", "bandwidth", "core", "clock", "frame", "is", "for", "with", "score",
     "drive", "speed", "data", "on", "random", "sequential", "write", "read", "fast", "test",
@@ -272,6 +297,11 @@ mod tests {
             "d01440c11cd9a160569291deda702a6ed2cae750573f77a6a6fb1fec8d7f3454",
             "63d41430d4e43fa3e41f75b6751459e09cd85ce6292614ff42dd24a3462f5944",
             "ebcf7400fd23c6834b9fdbea00ffebdfc33c4625f674dff35be0be1343be16ff",
+            "7e29ea669815ac7e1622a38bd0fadce45da40773f138455353140c7198ac7c79",
+            "3cdaa2f430b535d5e6c2e9a5dd6cf34710f704b6741469293be7a07f41187696",
+            "effd68b5a1906cd89ef4cb3a7163e4f0e18bd7666a00656374ebb70322717e0b",
+            "1d0e4a42acf6838f6b1c0b7f5f6d4b1eee0084fcff5577791e5415ff972285b9",
+            "f99ede5c859039a1d42231b229c341fe8b0dfb71af6f78e60296cd949091b460",
         ];
         assert_eq!(got, want);
     }

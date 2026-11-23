@@ -53,3 +53,32 @@ fn copy(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
     outu[half + i + 3u] = outu[i + 3u];
   }
 }
+
+// Image convolution: a 5×5 filter over a 1024×1024 image (from `outu`) into `outf`, staged
+// through workgroup shared memory as image filters do. Each iteration applies the filter
+// once more to the same tile, so p.iters scales the work: 1024×1024 pixels per iteration.
+const IMG: u32 = 1024u;
+var<workgroup> tile: array<f32, 400>; // (16 + 4) × (16 + 4)
+
+@compute @workgroup_size(16, 16)
+fn blur(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invocation_id) lid: vec3<u32>,
+        @builtin(workgroup_id) wid: vec3<u32>) {
+  let origin = vec2<i32>(wid.xy * 16u) - vec2<i32>(2, 2);
+  for (var t = lid.y * 16u + lid.x; t < 400u; t = t + 256u) {
+    let q = clamp(origin + vec2<i32>(i32(t % 20u), i32(t / 20u)), vec2<i32>(0, 0), vec2<i32>(i32(IMG) - 1, i32(IMG) - 1));
+    tile[t] = f32((outu[u32(q.y) * IMG + u32(q.x)] ^ p.salt) & 0xffffu) * (1.0 / 65535.0);
+  }
+  workgroupBarrier();
+  var acc = 0.0;
+  for (var it = 0u; it < p.iters; it = it + 1u) {
+    var sum = 0.0;
+    for (var dy = 0u; dy < 5u; dy = dy + 1u) {
+      for (var dx = 0u; dx < 5u; dx = dx + 1u) {
+        let w = f32((dx + 1u) * (dy + 1u)) * 0.0044444;
+        sum = sum + tile[(lid.y + dy) * 20u + lid.x + dx] * w;
+      }
+    }
+    acc = acc * 0.5 + sum;
+  }
+  outf[gid.y * IMG + gid.x] = acc;
+}
