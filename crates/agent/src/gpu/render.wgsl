@@ -16,13 +16,14 @@ struct VOut {
 
 @vertex
 fn vs_geom(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> @builtin(position) vec4<f32> {
-  var corner = array<vec2<f32>, 6>(
-    vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0),
-    vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0), vec2<f32>(0.0, 1.0));
+  // Quad corners (0,0) (1,0) (0,1) (1,0) (1,1) (0,1) from bit masks: computed rather than
+  // read from an array, which many GPUs would keep in slow scratch memory.
+  let c = vi % 6u;
+  let corner = vec2<f32>(f32((26u >> c) & 1u), f32((52u >> c) & 1u));
   let quad = vi / 6u;
   let cell = vec2<f32>(f32(quad % GRID), f32(quad / GRID));
   let jitter = vec2<f32>(f32(ii % 7u), f32(ii % 5u)) * 0.0007;
-  let p = (cell + corner[vi % 6u]) / f32(GRID) * 2.0 - 1.0 + jitter;
+  let p = (cell + corner) / f32(GRID) * 2.0 - 1.0 + jitter;
   // Later instances sit further back, so most of their fragments fail the depth test:
   // the cost is vertex processing and triangle setup, not shading.
   let z = 0.05 + 0.9 * f32(ii) / 1024.0;
@@ -59,9 +60,11 @@ fn fs_fill(i: VOut) -> @location(0) vec4<f32> {
 @fragment
 fn fs_tex(i: VOut) -> @location(0) vec4<f32> {
   var acc = vec4<f32>(0.0);
-  let base = i.uv * 3.0 + vec2<f32>(f32(i.layer) * 0.173, f32(i.layer) * 0.071);
+  // About one texel per pixel (1920×1080 over a 2048² texture), as mipmapped textures sample
+  // in games; stretching an unmipmapped texture would measure cache misses instead.
+  let base = i.uv * vec2<f32>(0.9375, 0.5273) + vec2<f32>(f32(i.layer) * 0.173, f32(i.layer) * 0.071);
   for (var k = 0u; k < 8u; k = k + 1u) {
-    let o = vec2<f32>(f32(k) * 0.3711, f32(k) * 0.1913);
+    let o = vec2<f32>(f32(k) * 0.37, f32(k) * 0.19) / 2048.0;
     acc = acc + textureSample(tex, samp, base + o);
   }
   return acc * 0.125;
@@ -109,20 +112,19 @@ struct Vert { pos: vec3<f32>, normal: vec3<f32> };
 
 // Instance 0 is the ground; the rest are cubes on a grid with varied heights.
 fn cube_vertex(vi: u32, ii: u32) -> Vert {
-  var normals = array<vec3<f32>, 6>(
-    vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(-1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0),
-    vec3<f32>(0.0, -1.0, 0.0), vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(0.0, 0.0, -1.0));
-  var quad = array<vec2<f32>, 6>(
-    vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0),
-    vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0));
+  // Face normal: axis face/2, negative for odd faces. Corners (-1,-1) (1,-1) (1,1) (-1,-1)
+  // (1,1) (-1,1) from bit masks. Both computed, not read from arrays (see vs_geom).
   let face = vi / 6u;
-  let n = normals[face];
-  let q = quad[vi % 6u];
+  let axis = face / 2u;
+  let sign = 1.0 - 2.0 * f32(face & 1u);
+  let n = vec3<f32>(f32(axis == 0u), f32(axis == 1u), f32(axis == 2u)) * sign;
+  let c = vi % 6u;
+  let q = vec2<f32>(f32((22u >> c) & 1u), f32((52u >> c) & 1u)) * 2.0 - 1.0;
   // Build the face from its normal and two tangent axes.
   var t1 = vec3<f32>(0.0, 1.0, 0.0);
   if (abs(n.y) > 0.5) { t1 = vec3<f32>(1.0, 0.0, 0.0); }
   let t2 = cross(n, t1);
-  var local = n + t1 * q.x + t2 * q.y;
+  let local = n + t1 * q.x + t2 * q.y;
   var center = vec3<f32>(0.0, -1.0, -10.0);
   var scale = vec3<f32>(90.0, 1.0, 70.0);
   if (ii > 0u) {
