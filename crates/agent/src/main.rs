@@ -226,6 +226,14 @@ fn main() {
                     Ok(mut r) => {
                         println!("fp32 {:.0} GFLOPS · int32 {:.0} GIOPS · bandwidth {:.0} GB/s", r.fp32_gflops, r.int32_giops, r.bandwidth_gbs);
                         r.details = gpu::details::collect(r.adapter.vendor_id, r.adapter.device_id, &r.adapter.name);
+                        if let Some(d) = &r.details {
+                            let mut parts = Vec::new();
+                            if let Some(v) = d.vram_bytes { parts.push(format!("{:.0} GB", v as f64 / (1u64 << 30) as f64)); }
+                            if let Some(c) = d.cores { parts.push(format!("{c} cores")); }
+                            if let (Some(g), Some(w)) = (d.pcie_gen.or(d.pcie_gen_max), d.pcie_width) { parts.push(format!("PCIe {g}.0 x{w}")); }
+                            if let Some(v) = &d.driver_version { parts.push(format!("driver {v}")); }
+                            if !parts.is_empty() { println!("      {}", parts.join(" · ")); }
+                        }
                         body["gpu"] = serde_json::to_value(&r).unwrap();
                     }
                     Err(e) => {

@@ -55,10 +55,14 @@ can be started by double-clicking. The site doesn't offer such downloads yet.
 ## Privacy
 
 The agent sends the benchmark results; the model names of the CPU, GPU and test drive;
-core counts, memory size, OS and kernel version; on Linux, the CPU clock speeds seen
-during the test; the names, filesystem types and sizes of mounted drives; and a salted
-hash of the OS machine id, which lets the server group repeat runs without learning the
-id. It doesn't send serial numbers, usernames, hostnames or MAC addresses. The server
+core counts, memory size, OS and kernel version; on Linux and Windows, the CPU clock
+speeds seen during the test; the motherboard model and BIOS version (or the computer's
+model, for prebuilt PCs and laptops); each memory module's size, type, speed,
+manufacturer and part number; CPU cache sizes; the GPU's memory size, driver version,
+maximum clocks, PCIe link and power limit; the names, filesystem types and sizes of
+mounted drives; and a salted hash of the OS machine id, which lets the server group
+repeat runs without learning the id. It doesn't send serial numbers, asset tags,
+usernames, hostnames or MAC addresses. The server
 sees your IP address and stores only a keyed hash of it.
 
 ## Results are checked

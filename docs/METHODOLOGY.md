@@ -137,8 +137,9 @@ a run with every accepted result for the same model.
   median absolute deviations) are held for review and stay out of aggregates
   until a moderator reviews them.
 * Overclocked and tuned parts count, with a label. A CPU is labeled overclocked
-  when its observed clock exceeds its rated boost by more than 3% (Linux exposes
-  live clocks; Windows and macOS don't to unprivileged programs). CPU and GPU
+  when its observed clock exceeds its rated boost by more than 3%. The agent reads
+  live clocks on Linux (cpufreq) and Windows (the performance counters Task Manager
+  uses); macOS doesn't expose them to programs without administrator rights. CPU and GPU
   results more than 8% and 3 MADs above the model's median are labeled likely
   overclocked or tuned. Component pages show the fastest and slowest results.
 * Runs where the OS limits the threads available (VMs, containers) are kept but
