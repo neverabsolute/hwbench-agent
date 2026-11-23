@@ -2,6 +2,7 @@ mod api;
 mod cpu;
 mod disk;
 mod gpu;
+mod hwinfo;
 mod ram;
 mod system;
 mod util;
@@ -222,8 +223,9 @@ fn main() {
                 print!("Benchmarking GPU: {}… ", report.name);
                 let _ = std::io::stdout().flush();
                 match gpu::run(adapter, report.clone(), window) {
-                    Ok(r) => {
+                    Ok(mut r) => {
                         println!("fp32 {:.0} GFLOPS · int32 {:.0} GIOPS · bandwidth {:.0} GB/s", r.fp32_gflops, r.int32_giops, r.bandwidth_gbs);
+                        r.details = gpu::details::collect(r.adapter.vendor_id, r.adapter.device_id, &r.adapter.name);
                         body["gpu"] = serde_json::to_value(&r).unwrap();
                     }
                     Err(e) => {

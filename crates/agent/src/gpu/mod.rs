@@ -4,6 +4,8 @@
 //! more work per second than the server could re-check. The server relies on
 //! per-model distributions and theoretical-peak ceilings instead.
 
+pub mod details;
+
 use serde::Serialize;
 use std::time::{Duration, Instant};
 use wgpu::util::DeviceExt;
@@ -48,6 +50,8 @@ pub struct GpuResult {
     pub bandwidth_gbs: f64,
     pub buffer_bytes: u64,
     pub tests: std::collections::BTreeMap<&'static str, TestResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<details::GpuDetails>,
 }
 
 fn report(info: &wgpu::AdapterInfo) -> AdapterReport {
@@ -280,7 +284,7 @@ pub fn run(adapter: &wgpu::Adapter, report: AdapterReport, window: Duration) -> 
     tests.insert("fp32", fp32);
     tests.insert("int32", int32);
     tests.insert("copy", copy);
-    Ok(GpuResult { adapter: report, fp32_gflops: f, int32_giops: i, bandwidth_gbs: c, buffer_bytes: b.buffer_bytes, tests })
+    Ok(GpuResult { adapter: report, fp32_gflops: f, int32_giops: i, bandwidth_gbs: c, buffer_bytes: b.buffer_bytes, tests, details: None })
 }
 
 #[cfg(test)]
@@ -300,7 +304,7 @@ mod tests {
                 name: "x".into(), vendor_id: 1, device_id: 1, device_type: "DiscreteGpu".into(),
                 backend: "Vulkan".into(), driver: String::new(), driver_info: String::new(),
             },
-            fp32_gflops: 1.0, int32_giops: 1.0, bandwidth_gbs: 1.0, buffer_bytes: 1, tests,
+            fp32_gflops: 1.0, int32_giops: 1.0, bandwidth_gbs: 1.0, buffer_bytes: 1, tests, details: None,
         };
         let v = serde_json::to_value(&r).unwrap();
         for k in ["adapter", "fp32Gflops", "int32Giops", "bandwidthGBs", "bufferBytes", "tests"] {

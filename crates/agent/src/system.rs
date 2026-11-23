@@ -14,6 +14,7 @@ pub struct SystemInfo {
     pub cpu: CpuInfo,
     pub memory: MemoryInfo,
     pub disks: Vec<DiskInfo>,
+    pub hardware: crate::hwinfo::Hardware,
 }
 
 #[derive(Serialize, Debug)]
@@ -91,6 +92,7 @@ pub fn collect() -> SystemInfo {
         },
         memory: MemoryInfo { total_bytes: sys.total_memory() },
         disks,
+        hardware: crate::hwinfo::collect(),
     }
 }
 

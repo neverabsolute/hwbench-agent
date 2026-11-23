@@ -25,3 +25,5 @@ jobs:
       # macOS runners have an Apple GPU (Metal); Windows has WARP (DX12 software).
       # Linux runners have no GPU: the suite must skip cleanly there.
       - run: cargo run --release -p hwbench -- --dry-run --no-open --all
+      # Shows what hardware details each OS reports (memory modules, board, caches).
+      - run: cargo run --release -p hwbench -- --dry-run --json --no-open --ram
