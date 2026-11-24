@@ -469,10 +469,129 @@ mod macos {
 
 #[cfg(windows)]
 mod windows {
+    //! Drive model, bus, media type and size straight from the storage driver, the way
+    //! disk utilities read them: open the volume and its physical disk with no access rights
+    //! (no administrator needed) and query them. PowerShell's Get-Disk is the fallback; it
+    //! failed outright on some machines (the drive then showed as "Unknown drive").
     use super::DriveInfo;
+    use std::ffi::c_void;
+    use std::os::windows::ffi::OsStrExt;
     use std::path::Path;
 
-    pub fn drive_info(dir: &Path) -> Option<DriveInfo> {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetVolumePathNameW(file: *const u16, out: *mut u16, len: u32) -> i32;
+        fn GetVolumeNameForVolumeMountPointW(mount: *const u16, out: *mut u16, len: u32) -> i32;
+        fn CreateFileW(name: *const u16, access: u32, share: u32, sa: *mut c_void, disposition: u32, flags: u32, template: *mut c_void) -> *mut c_void;
+        fn DeviceIoControl(h: *mut c_void, code: u32, inb: *const c_void, insz: u32, outb: *mut c_void, outsz: u32, ret: *mut u32, ov: *mut c_void) -> i32;
+        fn CloseHandle(h: *mut c_void) -> i32;
+    }
+
+    const IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS: u32 = 0x0056_0000;
+    const IOCTL_STORAGE_QUERY_PROPERTY: u32 = 0x002D_1400;
+    const IOCTL_DISK_GET_DRIVE_GEOMETRY_EX: u32 = 0x0007_00A0;
+    const STORAGE_DEVICE_PROPERTY: u32 = 0;
+    const STORAGE_DEVICE_SEEK_PENALTY_PROPERTY: u32 = 7;
+
+    fn wide(s: &str) -> Vec<u16> {
+        std::ffi::OsStr::new(s).encode_wide().chain(Some(0)).collect()
+    }
+    fn from_wide(buf: &[u16]) -> String {
+        String::from_utf16_lossy(&buf[..buf.iter().position(|&c| c == 0).unwrap_or(buf.len())])
+    }
+
+    struct Handle(*mut c_void);
+    impl Handle {
+        fn open(path: &str) -> Option<Handle> {
+            // Zero access rights: enough for these queries, and works without administrator rights.
+            let h = unsafe { CreateFileW(wide(path).as_ptr(), 0, 3, std::ptr::null_mut(), 3, 0, std::ptr::null_mut()) };
+            (h as isize != -1 && !h.is_null()).then_some(Handle(h))
+        }
+        fn ioctl(&self, code: u32, input: &[u8], out: &mut [u8]) -> Option<usize> {
+            let mut got = 0u32;
+            let ok = unsafe {
+                DeviceIoControl(self.0, code, input.as_ptr().cast(), input.len() as u32, out.as_mut_ptr().cast(), out.len() as u32, &mut got, std::ptr::null_mut())
+            };
+            (ok != 0).then_some(got as usize)
+        }
+        fn property(&self, id: u32, out: &mut [u8]) -> Option<usize> {
+            let mut q = [0u8; 12]; // STORAGE_PROPERTY_QUERY { PropertyId, QueryType = standard, AdditionalParameters }
+            q[..4].copy_from_slice(&id.to_le_bytes());
+            self.ioctl(IOCTL_STORAGE_QUERY_PROPERTY, &q, out)
+        }
+    }
+    impl Drop for Handle {
+        fn drop(&mut self) {
+            unsafe { CloseHandle(self.0) };
+        }
+    }
+
+    fn u32_at(b: &[u8], at: usize) -> u32 {
+        b.get(at..at + 4).map(|x| u32::from_le_bytes(x.try_into().unwrap())).unwrap_or(0)
+    }
+    fn cstr_at(b: &[u8], offset: u32) -> String {
+        let o = offset as usize;
+        if o == 0 || o >= b.len() {
+            return String::new();
+        }
+        let end = b[o..].iter().position(|&c| c == 0).map_or(b.len(), |n| o + n);
+        String::from_utf8_lossy(&b[o..end]).trim().to_string()
+    }
+
+    /// STORAGE_BUS_TYPE → the agent's bus names.
+    pub fn bus_name(bus_type: u32) -> &'static str {
+        match bus_type {
+            17 => "nvme",
+            3 | 11 => "sata",
+            7 => "usb",
+            12 | 13 => "sd",
+            14 | 15 => "virtual",
+            _ => "unknown",
+        }
+    }
+
+    /// Vendor and product from a STORAGE_DEVICE_DESCRIPTOR; "NVMe"/"ATA" vendor fields are bus names, not brands.
+    pub fn model_from_descriptor(b: &[u8]) -> (String, u32) {
+        let vendor = cstr_at(b, u32_at(b, 12));
+        let product = cstr_at(b, u32_at(b, 16));
+        let vendor = if vendor.eq_ignore_ascii_case("nvme") || vendor.eq_ignore_ascii_case("ata") { String::new() } else { vendor };
+        let model = [vendor, product].iter().filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>().join(" ");
+        (model, u32_at(b, 28))
+    }
+
+    fn native(dir: &Path) -> Option<DriveInfo> {
+        let path = std::fs::canonicalize(dir).ok()?;
+        let mut mount = [0u16; 512];
+        if unsafe { GetVolumePathNameW(wide(&path.to_string_lossy()).as_ptr(), mount.as_mut_ptr(), mount.len() as u32) } == 0 {
+            return None;
+        }
+        let mut volume = [0u16; 128];
+        if unsafe { GetVolumeNameForVolumeMountPointW(mount.as_ptr(), volume.as_mut_ptr(), volume.len() as u32) } == 0 {
+            return None;
+        }
+        let volume = from_wide(&volume); // \\?\Volume{GUID}\ ; the device is the same name without the slash
+        let vol = Handle::open(volume.trim_end_matches('\\'))?;
+        let mut extents = [0u8; 8 + 24 * 8];
+        vol.ioctl(IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, &[], &mut extents)?;
+        if u32_at(&extents, 0) == 0 {
+            return None;
+        }
+        let disk = Handle::open(&format!(r"\\.\PhysicalDrive{}", u32_at(&extents, 8)))?;
+        let mut desc = [0u8; 1024];
+        let n = disk.property(STORAGE_DEVICE_PROPERTY, &mut desc)?;
+        let (model, bus_type) = model_from_descriptor(&desc[..n]);
+        let mut seek = [0u8; 12];
+        let rotational = disk.property(STORAGE_DEVICE_SEEK_PENALTY_PROPERTY, &mut seek).filter(|&n| n >= 9).map(|_| seek[8] != 0);
+        let mut geo = [0u8; 256];
+        let size_bytes = disk.ioctl(IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, &[], &mut geo).filter(|&n| n >= 32)
+            .map(|_| i64::from_le_bytes(geo[24..32].try_into().unwrap())).filter(|&v| v > 0).map(|v| v as u64);
+        if model.is_empty() {
+            return None;
+        }
+        Some(DriveInfo { model, bus: bus_name(bus_type).into(), rotational, size_bytes })
+    }
+
+    fn powershell(dir: &Path) -> Option<DriveInfo> {
         let letter = std::fs::canonicalize(dir).ok()?.to_string_lossy().trim_start_matches(r"\\?\").chars().next()?;
         if !letter.is_ascii_alphabetic() {
             return None;
@@ -481,10 +600,13 @@ mod windows {
             "$d = Get-Partition -DriveLetter {letter} | Get-Disk; $p = Get-PhysicalDisk | Where-Object DeviceId -eq $d.Number; \
              \"$($d.FriendlyName)|$($d.BusType)|$($p.MediaType)|$($d.Size)\""
         );
-        let out = std::process::Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &script]).output().ok()?;
-        let line = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let out = crate::util::command_output(
+            std::process::Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &script]),
+            std::time::Duration::from_secs(10),
+        )?;
+        let line = out.lines().next().unwrap_or("").trim().to_string();
         let parts: Vec<&str> = line.split('|').collect();
-        if parts.len() < 4 {
+        if parts.len() < 4 || parts[0].trim().is_empty() {
             return None;
         }
         let bus = parts[1].to_lowercase();
@@ -494,6 +616,32 @@ mod windows {
             rotational: match parts[2].to_lowercase().as_str() { "hdd" => Some(true), "ssd" => Some(false), _ => None },
             size_bytes: parts[3].trim().parse().ok(),
         })
+    }
+
+    pub fn drive_info(dir: &Path) -> Option<DriveInfo> {
+        native(dir).or_else(|| powershell(dir))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        #[test]
+        fn reads_the_temp_drive() {
+            let info = super::drive_info(&std::env::temp_dir()).expect("drive info");
+            assert!(!info.model.is_empty(), "{info:?}");
+            assert!(info.size_bytes.unwrap_or(0) > 1 << 30, "{info:?}");
+        }
+
+        #[test]
+        fn descriptor_parsing() {
+            let mut b = vec![0u8; 96];
+            b[12..16].copy_from_slice(&40u32.to_le_bytes());
+            b[16..20].copy_from_slice(&48u32.to_le_bytes());
+            b[28..32].copy_from_slice(&17u32.to_le_bytes());
+            b[40..44].copy_from_slice(b"NVMe");
+            b[48..71].copy_from_slice(b"Samsung SSD 990 PRO 2TB");
+            assert_eq!(super::model_from_descriptor(&b), ("Samsung SSD 990 PRO 2TB".to_string(), 17));
+            assert_eq!(super::bus_name(17), "nvme");
+        }
     }
 }
 
