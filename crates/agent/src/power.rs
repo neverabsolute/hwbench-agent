@@ -55,12 +55,29 @@ mod imp {
     unsafe extern "system" {
         fn GetSystemPowerStatus(status: *mut SystemPowerStatus) -> i32;
         fn LocalFree(mem: *mut c_void) -> *mut c_void;
+        fn LoadLibraryW(name: *const u16) -> *mut c_void;
+        fn GetProcAddress(module: *mut c_void, name: *const u8) -> *mut c_void;
     }
     #[link(name = "powrprof")]
     unsafe extern "system" {
         fn PowerGetActiveScheme(root: *mut c_void, scheme: *mut *mut Guid) -> u32;
-        // Windows 10 1709+: the power mode slider ("Best power efficiency" … "Best performance").
-        fn PowerGetEffectiveOverlayScheme(overlay: *mut Guid) -> u32;
+    }
+
+    /// The power mode slider ("Best power efficiency" … "Best performance"), Windows 10 1709+.
+    /// powrprof.dll exports it but its import library doesn't, so it's looked up at run time.
+    fn effective_overlay() -> Option<Guid> {
+        let name: Vec<u16> = "powrprof.dll".encode_utf16().chain(Some(0)).collect();
+        let module = unsafe { LoadLibraryW(name.as_ptr()) };
+        if module.is_null() {
+            return None;
+        }
+        let f = unsafe { GetProcAddress(module, c"PowerGetEffectiveOverlayScheme".as_ptr().cast()) };
+        if f.is_null() {
+            return None;
+        }
+        let f: unsafe extern "system" fn(*mut Guid) -> u32 = unsafe { std::mem::transmute(f) };
+        let mut g = Guid::default();
+        (unsafe { f(&mut g) } == 0).then_some(g)
     }
 
     // Power saver plan, and the "Best power efficiency" power mode.
@@ -73,8 +90,7 @@ mod imp {
         // ACLineStatus: 0 battery, 1 mains, 255 unknown. BatteryFlag 128: no battery at all.
         let on_battery = if !have || s.ac_line_status == 255 { None } else { Some(s.ac_line_status == 0 && s.battery_flag != 128) };
         let battery_saver = have && s.system_status_flag & 1 == 1;
-        let mut overlay = Guid::default();
-        let efficiency_mode = unsafe { PowerGetEffectiveOverlayScheme(&mut overlay) } == 0 && overlay == EFFICIENCY_OVERLAY;
+        let efficiency_mode = effective_overlay().is_some_and(|g| g == EFFICIENCY_OVERLAY);
         let mut plan: *mut Guid = std::ptr::null_mut();
         let saver_plan = unsafe { PowerGetActiveScheme(std::ptr::null_mut(), &mut plan) } == 0 && !plan.is_null() && {
             let is = unsafe { &*plan } == &POWER_SAVER_PLAN;
