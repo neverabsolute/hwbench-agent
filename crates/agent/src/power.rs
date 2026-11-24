@@ -55,29 +55,21 @@ mod imp {
     unsafe extern "system" {
         fn GetSystemPowerStatus(status: *mut SystemPowerStatus) -> i32;
         fn LocalFree(mem: *mut c_void) -> *mut c_void;
-        fn LoadLibraryW(name: *const u16) -> *mut c_void;
-        fn GetProcAddress(module: *mut c_void, name: *const u8) -> *mut c_void;
     }
-    #[link(name = "powrprof")]
+    // raw-dylib: powrprof.dll exports PowerGetEffectiveOverlayScheme (the power mode slider,
+    // Windows 10 1709+) but its import library doesn't, so rustc writes the import entry
+    // itself. A plain import rather than a run-time GetProcAddress lookup, which antivirus
+    // heuristics treat as hiding what a program calls.
+    #[link(name = "powrprof", kind = "raw-dylib")]
     unsafe extern "system" {
         fn PowerGetActiveScheme(root: *mut c_void, scheme: *mut *mut Guid) -> u32;
+        fn PowerGetEffectiveOverlayScheme(scheme: *mut Guid) -> u32;
     }
 
-    /// The power mode slider ("Best power efficiency" … "Best performance"), Windows 10 1709+.
-    /// powrprof.dll exports it but its import library doesn't, so it's looked up at run time.
+    /// The power mode slider ("Best power efficiency" … "Best performance").
     fn effective_overlay() -> Option<Guid> {
-        let name: Vec<u16> = "powrprof.dll".encode_utf16().chain(Some(0)).collect();
-        let module = unsafe { LoadLibraryW(name.as_ptr()) };
-        if module.is_null() {
-            return None;
-        }
-        let f = unsafe { GetProcAddress(module, c"PowerGetEffectiveOverlayScheme".as_ptr().cast()) };
-        if f.is_null() {
-            return None;
-        }
-        let f: unsafe extern "system" fn(*mut Guid) -> u32 = unsafe { std::mem::transmute(f) };
         let mut g = Guid::default();
-        (unsafe { f(&mut g) } == 0).then_some(g)
+        (unsafe { PowerGetEffectiveOverlayScheme(&mut g) } == 0).then_some(g)
     }
 
     // Power saver plan, and the "Best power efficiency" power mode.
