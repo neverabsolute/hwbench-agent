@@ -229,7 +229,7 @@ impl Render {
                 let mut p = self.color_pass(enc, false);
                 p.set_pipeline(&self.texture);
                 p.set_bind_group(0, &self.tex_group, &[]);
-                p.draw(0..3, 0..TEX_LAYERS);
+                p.draw(0..3, 0..1); // all TEX_LAYERS are sampled inside the one pass (see fs_tex)
             }
             _ => {
                 {

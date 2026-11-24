@@ -57,17 +57,22 @@ fn fs_fill(i: VOut) -> @location(0) vec4<f32> {
 @group(0) @binding(0) var tex: texture_2d<f32>;
 @group(0) @binding(1) var samp: sampler;
 
+// One full-screen pass taking 64 samples per pixel (8 offset layers × 8 taps). Agent 0.6.2 and
+// earlier drew the 8 layers as separate opaque passes; tile-based GPUs (Apple) correctly skip
+// shading a layer that the next one fully covers, so they sampled an eighth of the texels.
 @fragment
 fn fs_tex(i: VOut) -> @location(0) vec4<f32> {
   var acc = vec4<f32>(0.0);
-  // About one texel per pixel (1920×1080 over a 2048² texture), as mipmapped textures sample
-  // in games; stretching an unmipmapped texture would measure cache misses instead.
-  let base = i.uv * vec2<f32>(0.9375, 0.5273) + vec2<f32>(f32(i.layer) * 0.173, f32(i.layer) * 0.071);
-  for (var k = 0u; k < 8u; k = k + 1u) {
-    let o = vec2<f32>(f32(k) * 0.37, f32(k) * 0.19) / 2048.0;
-    acc = acc + textureSample(tex, samp, base + o);
+  for (var l = 0u; l < 8u; l = l + 1u) {
+    // About one texel per pixel (1920×1080 over a 2048² texture), as mipmapped textures sample
+    // in games; stretching an unmipmapped texture would measure cache misses instead.
+    let base = i.uv * vec2<f32>(0.9375, 0.5273) + vec2<f32>(f32(l) * 0.173, f32(l) * 0.071);
+    for (var k = 0u; k < 8u; k = k + 1u) {
+      let o = vec2<f32>(f32(k) * 0.37, f32(k) * 0.19) / 2048.0;
+      acc = acc + textureSample(tex, samp, base + o);
+    }
   }
-  return acc * 0.125;
+  return acc * 0.015625;
 }
 
 // ---------- scene: shadow-mapped, lit field of cubes ---------------------------------------

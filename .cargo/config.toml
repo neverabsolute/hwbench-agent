@@ -1,0 +1,9 @@
+# The AES and GHASH code in aes-gcm (the CPU "crypto" workload) uses ARMv8 crypto instructions
+# only when built with these flags; without them ARM machines ran a slow software fallback while
+# x86 used AES-NI. Both crates detect the instructions at run time on Linux and macOS. (Windows on
+# ARM would need the target feature forced on, so it keeps the portable code.)
+[target.aarch64-apple-darwin]
+rustflags = ["--cfg", "aes_armv8", "--cfg", "polyval_armv8"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["--cfg", "aes_armv8", "--cfg", "polyval_armv8"]

@@ -67,7 +67,7 @@ geometry is generated in the shaders, so every backend does identical work):
 |---|---|
 | `geometry` | 64×64 quad grids × 1,024 instances (≈8.4 M triangles per frame), depth-tested front to back: triangle setup, rasterization and depth rejection |
 | `fill` | 32 alpha-blended full-screen layers: blending and render output throughput |
-| `texture` | 8 layers sampling a 2048×2048 texture 8 times per pixel with bilinear filtering: texture units |
+| `texture` | One full-screen pass taking 64 bilinear samples per pixel from a 2048×2048 texture (8 offset layers × 8 taps): texture units |
 | `scene` | A 2048² shadow-map pass plus a lit, textured pass over 2,000 cubes and a ground plane, with 4-tap filtered shadows: frames per second |
 
 Each test first sizes its batch so one batch takes about 30 ms (long enough to
@@ -190,3 +190,12 @@ earlier agents aren't counted. 0.6.2 also checks, before it starts, whether othe
 programs are keeping the computer busy (CPU, GPU or graphics memory), says which, and
 waits up to 30 seconds for them to settle. Runs that start busy still count, and their
 results page says so.
+
+Agent 0.6.3 fixed two measurements that were wrong on some hardware. The texturing test used to
+draw its eight layers as separate opaque passes, and tile-based GPUs (Apple and most mobile GPUs)
+correctly skip shading a layer that the next one covers, so they reported about eight times their
+texture rate; the layers are now sampled in one pass. And ARM builds now use the processor's AES
+instructions in the encryption workload (they ran a slow software fallback, while x86 used
+AES-NI), on macOS and Linux. Earlier GPU results from tile-based GPUs and earlier CPU results from
+ARM machines aren't counted. On Windows on ARM the encryption workload still uses the portable code.
+Windows agents also read the drive model from the storage driver now, instead of PowerShell.
