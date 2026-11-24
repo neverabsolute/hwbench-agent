@@ -26,8 +26,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      # Cached per target, so re-running a failed release job doesn't start from scratch.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
       - if: matrix.glibc
-        run: pip install ziglang==0.13.0 && cargo install --locked cargo-zigbuild
+        run: pip install ziglang==0.13.0
+      # Prebuilt binary instead of compiling cargo-zigbuild from source on every release.
+      - if: matrix.glibc
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
       - if: matrix.glibc
         run: cargo zigbuild --release --locked -p hwbench --target ${{ matrix.target }}.${{ matrix.glibc }}
       - if: ${{ !matrix.glibc }}
@@ -49,6 +58,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
       - run: cargo build --locked -p hwbench-kernels-wasm --target wasm32-unknown-unknown --profile wasm
       - run: mkdir -p dist && cp target/wasm32-unknown-unknown/wasm/hwbench_kernels_wasm.wasm dist/hwbench-kernels.wasm
       - uses: actions/upload-artifact@v4

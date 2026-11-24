@@ -18,6 +18,15 @@ codegen-units = 1
 panic = "abort"
 strip = true
 
+# CI: release-level optimization without the slow fat-LTO, single-codegen-unit link. Kernel
+# results don't depend on these settings (integer and IEEE float operations only), so the
+# golden-digest checks still hold for release builds.
+[profile.ci]
+inherits = "release"
+lto = false
+codegen-units = 16
+strip = false
+
 [profile.wasm]
 inherits = "release"
 opt-level = "s"
