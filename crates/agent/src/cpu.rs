@@ -53,6 +53,19 @@ pub fn run_test(seed: &[u8; 32], kernel: Kernel, threads: usize, window: Duratio
     CpuTest { kernel: kernel.name(), threads, chunks: all.len() as u32, elapsed_ns: elapsed.as_nanos() as u64, digests }
 }
 
+/// SHA-256 over every test's kernel, threads, chunks, elapsed time and digests, in order:
+/// `"{kernel}:{threads}:{chunks}:{elapsedNs}:{digests}\n"` per test. Hex.
+pub fn commitment(tests: &[CpuTest]) -> String {
+    use sha2::{Digest as _, Sha256};
+    let mut h = Sha256::new();
+    for t in tests {
+        h.update(format!("{}:{}:{}:{}:", t.kernel, t.threads, t.chunks, t.elapsed_ns).as_bytes());
+        h.update(t.digests.as_bytes());
+        h.update(b"\n");
+    }
+    crate::util::hex(&h.finalize())
+}
+
 /// Spin all cores briefly so frequency scaling has ramped before measuring.
 pub fn warm_up(seed: &[u8; 32], threads: usize) {
     let _ = run_test(seed, Kernel::Hash, threads, Duration::from_millis(400));
@@ -113,4 +126,19 @@ pub fn sample_clocks<T>(busy: usize, f: impl FnOnce() -> T) -> (T, Option<(u32, 
     stop.store(true, Ordering::Relaxed);
     let r = sampler.join().ok().filter(|(m, _)| *m > 0);
     (out, r)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The server computes the same commitment (hwbench: src/lib/cpu-commit.ts); keep them in step.
+    #[test]
+    fn commitment_golden() {
+        let tests = [
+            CpuTest { kernel: "hash", threads: 1, chunks: 2, elapsed_ns: 800_000_000, digests: "00112233445566778899aabbccddeeff".into() },
+            CpuTest { kernel: "sort", threads: 4, chunks: 1, elapsed_ns: 801_000_000, digests: "0123456789abcdef".into() },
+        ];
+        assert_eq!(commitment(&tests), "a68859c154f5b676ba0659cc9739aca4209fd9852fd050e13557e859e92e0838");
+    }
 }

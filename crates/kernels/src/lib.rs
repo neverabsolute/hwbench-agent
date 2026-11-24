@@ -5,7 +5,10 @@
 //! server re-runs a random sample of chunks from this same crate compiled to
 //! WebAssembly and rejects the run if any digest differs. This proves the work
 //! was actually performed for the server-issued seed. It does **not** prove how
-//! long the work took — timing plausibility is checked statistically server-side.
+//! long the work took — timing plausibility is checked server-side.
+//!
+//! Each CPU test runs under its own seed, [`test_seed`]`(seed, threads)`, so the
+//! chunks computed for one test can't be reported again as another test's.
 //!
 //! Outputs must be bit-identical on every platform, so kernels avoid anything
 //! platform-dependent: no `f32`/`f64` transcendental functions, no FMA, no
@@ -15,8 +18,17 @@ use sha2::{Digest as _, Sha256};
 
 mod apps;
 
-/// Bump whenever any kernel's output for a given input changes.
-pub const KERNELS_VERSION: u32 = 2;
+/// Bump whenever any kernel's output for a given input changes, or the way seeds are derived.
+/// v3: every CPU test runs under [`test_seed`] instead of the session seed.
+pub const KERNELS_VERSION: u32 = 3;
+
+/// The seed a CPU test with `threads` workers runs under, derived from the session seed.
+pub fn test_seed(seed: &[u8; 32], threads: u32) -> [u8; 32] {
+    let mut h = blake3::Hasher::new_keyed(seed);
+    h.update(b"hwbench-cpu-test-v1");
+    h.update(&threads.to_le_bytes());
+    *h.finalize().as_bytes()
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
@@ -304,6 +316,14 @@ mod tests {
             "f99ede5c859039a1d42231b229c341fe8b0dfb71af6f78e60296cd949091b460",
         ];
         assert_eq!(got, want);
+    }
+
+    /// Golden test seeds: the server's verifier derives these too.
+    #[test]
+    fn test_seeds() {
+        let seed = [1u8; 32];
+        assert_eq!(hex(&test_seed(&seed, 1)), "2ecc3fdab48979d635a8b6ae2db204521910c899428169fc7c45db1bc629102d");
+        assert_eq!(hex(&test_seed(&seed, 4)), "9cc087b23214d0cffb7f011fc920a6f4084bf22aabe68f5b7863ee0ad7d5980e");
     }
 
     fn hex(b: &[u8]) -> String {

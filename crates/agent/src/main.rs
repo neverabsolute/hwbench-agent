@@ -206,13 +206,14 @@ fn main() {
         let mut have_clocks = false;
         let max_threads = *counts.iter().max().unwrap_or(&1);
         for threads in counts {
+            let test_seed = hwbench_kernels::test_seed(&seed, threads as u32);
             cpu::warm_up(&seed, threads);
             print!("  {:>3} thread{:<2}", threads, if threads == 1 { "" } else { "s" });
             let (batch, sampled) = cpu::sample_clocks(threads, || {
                 let mut batch = Vec::new();
                 for name in &plan.kernels {
                     let k = Kernel::from_name(name).unwrap_or_else(|| fail(&format!("unknown kernel {name}; please update hwbench")));
-                    let test = cpu::run_test(&seed, k, threads, Duration::from_millis(plan.window_ms));
+                    let test = cpu::run_test(&test_seed, k, threads, Duration::from_millis(plan.window_ms));
                     print!(" {}={:.0}/s", name, test.chunks_per_sec());
                     let _ = std::io::stdout().flush();
                     batch.push(test);
@@ -226,6 +227,11 @@ fn main() {
             }
             tests.extend(batch);
             println!();
+        }
+        // Tell the server the CPU tests are done, before anything else runs: it times the CPU
+        // phase from the claim to this commitment, and the submission must match it.
+        if !args.dry_run {
+            api.commit_cpu(&code, &cpu::commitment(&tests)).unwrap_or_else(|e| fail(&e));
         }
         body["cpu"] = if have_clocks { serde_json::json!({ "tests": tests, "clocks": clocks }) } else { serde_json::json!({ "tests": tests }) };
     }
