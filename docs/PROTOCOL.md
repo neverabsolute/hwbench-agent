@@ -21,7 +21,7 @@ Sessions expire after 30 minutes and are rate limited per IP.
 
 ```
 POST /api/v1/sessions/{code}/claim
-{ "protocol": 1, "agentVersion": "0.6.0", "kernelsVersion": 2, "os": "linux", "arch": "x86_64" }
+{ "protocol": 1, "agentVersion": "0.7.0", "kernelsVersion": 3, "os": "linux", "arch": "x86_64" }
 → 200 {
   "seed": "<64 hex chars>",
   "selection": ["cpu", "ram"],
@@ -33,16 +33,34 @@ POST /api/v1/sessions/{code}/claim
 ```
 
 A session can be claimed once. `threads: 0` means "all logical processors".
-The server answers `426` to agents older than 0.6.0 or with another `kernelsVersion`.
+The server answers `426` to agents older than 0.7.0 or with another `kernelsVersion`.
 The seed only exists from this point on, so proofs cannot be precomputed.
 
-## 3. Submit
+## 3. Commit to the CPU results (0.7+)
+
+As soon as the CPU tests finish, before anything else runs, the agent sends a
+commitment to their results:
+
+```
+POST /api/v1/sessions/{code}/cpu
+{ "commitment": "<64 hex chars>" }
+→ 200 { "ok": true }
+```
+
+The commitment is SHA-256 over `"{kernel}:{threads}:{chunks}:{elapsedNs}:{digests}\n"`
+for each test, in the order they are submitted. The server records when it
+arrived. The time from the claim to the commitment is the CPU phase on the
+server's clock: the tests' `elapsedNs` must fit in it, and it must not be much
+longer than they add up to (spare time could be used to do more work than the
+run reports). The submission's CPU section must match the commitment.
+
+## 4. Submit
 
 ```
 POST /api/v1/sessions/{code}/submit
 {
   "protocol": 1,
-  "agent": { "version": "0.6.0", "kernelsVersion": 2, "target": "x86_64-unknown-linux-gnu" },
+  "agent": { "version": "0.7.0", "kernelsVersion": 3, "target": "x86_64-unknown-linux-gnu" },
   "deviceId": "<hex>",          // salted hash of a stable machine id; never the raw id
   "system": {
     …os, cpu, memory and drives; see crates/agent/src/system.rs…
@@ -103,8 +121,10 @@ name, such as the RTX 3060 8 GB and 12 GB.
 ### CPU proofs
 
 For each test, chunk indices `0..chunks` are handed out to worker threads in
-order. Each chunk `i` produces `hwbench_kernels::run_chunk(seed, kernel, i)`,
+order. Each chunk `i` produces `hwbench_kernels::run_chunk(test_seed, kernel, i)`,
 and the first 8 bytes of every digest are concatenated in index order.
+`test_seed` is `hwbench_kernels::test_seed(seed, threads)` (kernels v3+), so
+the chunks computed for one test can't be reported as another test's.
 
 The server re-runs a random sample of chunks with the same kernel code compiled
 to WebAssembly. If any digest differs, the run is rejected. This proves the

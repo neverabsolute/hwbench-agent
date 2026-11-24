@@ -154,8 +154,14 @@ a run with every accepted result for the same model.
 
 ## Checking results
 
-* CPU results include per-chunk digests for a seed the server issues. The server
-  re-runs a random sample of chunks and rejects runs whose digests don't match.
+* CPU results include per-chunk digests for a seed the server issues, with a
+  different seed for each test. The server re-runs a random sample of chunks and
+  rejects runs whose digests don't match.
+* The agent commits to its CPU results the moment the CPU tests finish. The tests'
+  reported times must fit in the CPU phase on the server's clock, and runs whose CPU
+  phase took much longer than they report are held for review.
+* Reported core counts are checked against the model's catalog entry. More cores than
+  the model has goes to review; fewer (a VM, cores disabled) is kept but not counted.
 * Consistency checks catch results such as multi-core scaling beyond the reported
   core count. Results more than 30% above the model's median (and more than 6
   median absolute deviations) are held for review and stay out of aggregates

@@ -106,6 +106,12 @@ impl Api {
         )
     }
 
+    /// Commit to the CPU results as soon as the CPU tests finish (see `cpu::commitment`).
+    pub fn commit_cpu(&self, code: &str, commitment: &str) -> Result<(), String> {
+        self.post::<_, serde_json::Value>(&format!("/api/v1/sessions/{code}/cpu"), &serde_json::json!({ "commitment": commitment }))
+            .map(|_| ())
+    }
+
     pub fn submit(&self, code: &str, body: &serde_json::Value) -> Result<Submitted, String> {
         self.post(&format!("/api/v1/sessions/{code}/submit"), body)
     }
