@@ -200,3 +200,10 @@ instructions in the encryption workload (they ran a slow software fallback, whil
 AES-NI), on macOS and Linux. Earlier GPU results from tile-based GPUs and earlier CPU results from
 ARM machines aren't counted. On Windows on ARM the encryption workload still uses the portable code.
 Windows agents also read the drive model from the storage driver now, instead of PowerShell.
+
+Agent 0.6.4 runs the GPU test through every graphics API the card offers and keeps the faster
+result: on Windows that's DirectX 12 and Vulkan, whose drivers can differ by several percent on
+the same card. The slower API's numbers are kept with the result. It also reports whether the
+computer ran on battery or in a power-saving mode (Windows battery saver, power saver plan or
+"best power efficiency" mode; macOS Low Power Mode; Linux power-saver profiles), and the results
+page says so. Those runs still count.

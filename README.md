@@ -23,7 +23,7 @@ administrator rights.
 | Component | Tests | Time |
 |---|---|---|
 | CPU | Ten workloads at 1, 4 and all threads: hashing, compression, sorting, matrix math, physics, game AI search, a bytecode interpreter, ray tracing, AES encryption and JSON parsing | ~30 s |
-| GPU | Compute (FP32, INT32, memory bandwidth, an image filter) and 3D at 1080p (geometry, fill rate, texturing, a shadowed scene) through wgpu (Metal, DirectX 12 or Vulkan) | ~20 s |
+| GPU | Compute (FP32, INT32, memory bandwidth, an image filter) and 3D at 1080p (geometry, fill rate, texturing, a shadowed scene) through wgpu (Metal, DirectX 12 or Vulkan; Windows tests both of its APIs and keeps the faster) | ~20 s (~40 s on Windows) |
 | Storage | Sequential and 4K random reads and writes at queue depths 1 and 32, bypassing the OS cache | ~15 s |
 | Memory | Read, write and copy bandwidth, latency, and latency across cache levels | ~6 s |
 

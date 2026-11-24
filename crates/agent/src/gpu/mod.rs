@@ -62,6 +62,42 @@ pub struct GpuResult {
     pub tests: std::collections::BTreeMap<&'static str, TestResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<details::GpuDetails>,
+    /// The same GPU measured through its other graphics APIs (Windows: DirectX 12 and Vulkan).
+    /// The result above is the faster one; these are kept for comparison.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub alternates: Vec<GpuAlternate>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuAlternate {
+    pub backend: String,
+    pub fp32_gflops: f64,
+    pub int32_giops: f64,
+    #[serde(rename = "bandwidthGBs")]
+    pub bandwidth_gbs: f64,
+    pub blur_gpix: f64,
+    pub geometry_gtris: f64,
+    pub fill_gpix: f64,
+    pub texture_gtex: f64,
+    pub scene_fps: f64,
+}
+
+impl GpuResult {
+    fn metrics(&self) -> [f64; 8] {
+        [self.fp32_gflops, self.int32_giops, self.bandwidth_gbs, self.blur_gpix, self.geometry_gtris, self.fill_gpix, self.texture_gtex, self.scene_fps]
+    }
+    /// Log of the geometric mean of all eight measurements: comparable across runs of the same GPU.
+    fn strength(&self) -> f64 {
+        self.metrics().iter().map(|v| v.max(1e-9).ln()).sum::<f64>() / 8.0
+    }
+    fn alternate(&self) -> GpuAlternate {
+        GpuAlternate {
+            backend: self.adapter.backend.clone(), fp32_gflops: self.fp32_gflops, int32_giops: self.int32_giops,
+            bandwidth_gbs: self.bandwidth_gbs, blur_gpix: self.blur_gpix, geometry_gtris: self.geometry_gtris,
+            fill_gpix: self.fill_gpix, texture_gtex: self.texture_gtex, scene_fps: self.scene_fps,
+        }
+    }
 }
 
 fn report(info: &wgpu::AdapterInfo) -> AdapterReport {
@@ -130,6 +166,61 @@ pub fn run_with_retry(target: &AdapterReport, window: Duration) -> Result<GpuRes
         }
     }
     Err(last)
+}
+
+/// Graphics APIs this GPU can be tested through, best first (Windows usually offers DirectX 12
+/// and Vulkan; macOS only Metal; Linux only Vulkan).
+pub fn backends(target: &AdapterReport) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for (_, r) in fresh_candidates(target) {
+        if !out.contains(&r.backend) {
+            out.push(r.backend);
+        }
+    }
+    out
+}
+
+/// Run the suite through each graphics API the GPU offers and keep the faster result. Drivers
+/// differ between APIs, so the same card could otherwise score differently depending on which
+/// one came first. The slower API's numbers are kept in `alternates`.
+pub fn run_best(target: &AdapterReport, window: Duration) -> Result<GpuResult, String> {
+    let apis = backends(target);
+    if apis.len() <= 1 {
+        return run_with_retry(target, window);
+    }
+    let mut ok: Vec<GpuResult> = Vec::new();
+    let mut last = String::new();
+    for api in &apis {
+        let mut done = false;
+        for attempt in 0..2 {
+            if let Some((adapter, rep)) = fresh_candidates(target).into_iter().find(|(_, r)| &r.backend == api) {
+                match run(&adapter, rep, window) {
+                    Ok(r) => { ok.push(r); done = true; }
+                    Err(e) => last = e,
+                }
+            }
+            if done {
+                break;
+            }
+            if attempt == 0 {
+                std::thread::sleep(Duration::from_secs(2));
+            }
+        }
+    }
+    ok.sort_by(|a, b| b.strength().total_cmp(&a.strength()));
+    if ok.is_empty() {
+        return Err(if last.is_empty() { "GPU not found when the test started".into() } else { last });
+    }
+    let mut best = ok.remove(0);
+    best.alternates = ok.iter().map(GpuResult::alternate).collect();
+    Ok(best)
+}
+
+/// How much slower an alternate was than the result kept, as a fraction (0.04 = 4% slower).
+pub fn shortfall(best: &GpuResult, alt: &GpuAlternate) -> f64 {
+    let a = [alt.fp32_gflops, alt.int32_giops, alt.bandwidth_gbs, alt.blur_gpix, alt.geometry_gtris, alt.fill_gpix, alt.texture_gtex, alt.scene_fps];
+    let la = a.iter().map(|v| v.max(1e-9).ln()).sum::<f64>() / 8.0;
+    1.0 - (la - best.strength()).exp()
 }
 
 /// All distinct GPUs (one entry per physical device), best first.
@@ -374,7 +465,7 @@ pub fn run(adapter: &wgpu::Adapter, report: AdapterReport, window: Duration) -> 
         adapter: report,
         fp32_gflops: g(&fp32), int32_giops: g(&int32), bandwidth_gbs: g(&copy), blur_gpix: g(&blur),
         geometry_gtris: g(&geometry), fill_gpix: g(&fill), texture_gtex: g(&texture), scene_fps: rate(&scene),
-        buffer_bytes: b.buffer_bytes, tests: Default::default(), details: None,
+        buffer_bytes: b.buffer_bytes, tests: Default::default(), details: None, alternates: Vec::new(),
     };
     for (k, t) in [("fp32", fp32), ("int32", int32), ("copy", copy), ("blur", blur), ("geometry", geometry), ("fill", fill), ("texture", texture), ("scene", scene)] {
         result.tests.insert(k, t);
@@ -400,7 +491,7 @@ mod tests {
                 backend: "Vulkan".into(), driver: String::new(), driver_info: String::new(),
             },
             fp32_gflops: 1.0, int32_giops: 1.0, bandwidth_gbs: 1.0, blur_gpix: 1.0, geometry_gtris: 1.0, fill_gpix: 1.0,
-            texture_gtex: 1.0, scene_fps: 1.0, buffer_bytes: 1, tests, details: None,
+            texture_gtex: 1.0, scene_fps: 1.0, buffer_bytes: 1, tests, details: None, alternates: Vec::new(),
         };
         let v = serde_json::to_value(&r).unwrap();
         for k in ["adapter", "fp32Gflops", "int32Giops", "bandwidthGBs", "blurGpix", "geometryGtris", "fillGpix", "textureGtex", "sceneFps", "bufferBytes", "tests"] {

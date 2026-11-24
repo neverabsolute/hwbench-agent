@@ -4,6 +4,7 @@ mod disk;
 mod gpu;
 mod hwinfo;
 mod load;
+mod power;
 mod qos;
 mod ram;
 mod system;
@@ -140,6 +141,11 @@ fn main() {
         None => gpus.first(),
     };
     let load = load::preflight(tested_gpu.map(|(_, g)| g.device_id), !args.no_wait);
+    let power = power::detect();
+    if power.limited() {
+        println!("Note: this computer is {}. Plug it in and turn off power saving for a result you can compare", power.describe());
+        println!("  with other machines; the results page will say how it ran.\n");
+    }
 
     let api = api::Api::new(&args.api);
     let (code, challenge) = if args.dry_run {
@@ -184,6 +190,7 @@ fn main() {
         "system": &sys,
         "gpus": gpus.iter().map(|(_, g)| g.clone()).collect::<Vec<_>>(),
         "load": &load,
+        "power": &power,
     });
 
     if wants("cpu") {
@@ -236,11 +243,20 @@ fn main() {
             }
             // The handle from startup can go stale during the CPU tests; the GPU is looked up again by id.
             Some((_, report)) => {
-                print!("Benchmarking GPU: {} (compute and 3D, about 20s)… ", report.name);
+                let apis = gpu::backends(report);
+                if apis.len() > 1 {
+                    print!("Benchmarking GPU: {} on {} (compute and 3D, about {}s)… ", report.name, apis.join(" and "), 20 * apis.len());
+                } else {
+                    print!("Benchmarking GPU: {} (compute and 3D, about 20s)… ", report.name);
+                }
                 let _ = std::io::stdout().flush();
-                match gpu::run_with_retry(report, window) {
+                match gpu::run_best(report, window) {
                     Ok(mut r) => {
                         println!("done");
+                        for alt in &r.alternates {
+                            let pct = gpu::shortfall(&r, alt) * 100.0;
+                            println!("      kept {}: {} was {:.0}% {}", r.adapter.backend, alt.backend, pct.abs(), if pct >= 0.0 { "slower" } else { "faster" });
+                        }
                         println!("      compute: fp32 {:.0} GFLOPS · int32 {:.0} GIOPS · bandwidth {:.0} GB/s · blur {:.1} Gpix/s",
                             r.fp32_gflops, r.int32_giops, r.bandwidth_gbs, r.blur_gpix);
                         println!("      3D: geometry {:.2} Gtris/s · fill {:.1} Gpix/s · texture {:.0} Gtex/s · scene {:.0} fps",

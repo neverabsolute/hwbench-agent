@@ -66,6 +66,7 @@ POST /api/v1/sessions/{code}/submit
            "ladder": [ { "bytes": 16384, "ns": 1.2 }, …, { "bytes": 268435456, "ns": 78.4 } ] },
   "load": { "cpuPct": 6.2, "gpuPct": 3, "vramUsedBytes": 1073741824, "vramTotalBytes": 12884901888,   // 0.6.2+; GPU fields optional
             "waitedMs": 1100, "busy": false },   // sampled just before benchmarking, after waiting up to 30 s for a busy system to settle
+  "power": { "onBattery": false, "saver": false },   // 0.6.4+; each field omitted when the OS doesn't say
   "gpus": [ { "name": "NVIDIA GeForce RTX 4070", "vendorId": 4318, "deviceId": 10118, "deviceType": "DiscreteGpu", "backend": "Vulkan", … } ],
   "gpu": {
     "adapter": { …one entry of "gpus"… },
@@ -78,7 +79,10 @@ POST /api/v1/sessions/{code}/submit
       "pcieGen": 4, "pcieGenMax": 4, "pcieWidth": 16, "pcieWidthMax": 16, "powerLimitW": 170,
       "cores": 19,                    // Apple GPUs
       "sources": ["nvidia-smi"]       // nvidia-smi, sysfs, registry or system_profiler
-    }
+    },
+    "alternates": [                   // optional (0.6.4+): the same GPU through its other graphics APIs
+      { "backend": "Vulkan", "fp32Gflops": 21010.2, …the same eight summary fields… }
+    ]                                 // the result above is the faster API; Windows tests DirectX 12 and Vulkan
   }
 }
 → 201 { "publicId": "r_8Gm2…", "url": "https://hwbench.io/run/r_8Gm2…" }
