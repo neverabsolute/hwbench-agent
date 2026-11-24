@@ -23,8 +23,9 @@ tests; the last five behave like real programs:
 | `parse` | Generating and parsing JSON-like text (browsers, APIs, config files) |
 
 Each kernel runs for a fixed 0.8 s window at 1 thread, 4 threads, and all
-available threads. A sub-score is the geometric mean, across kernels, of
-`chunks/sec ÷ reference single-thread chunks/sec × 100`. So the reference CPU
+available threads. A sub-score is the weighted geometric mean, across kernels, of
+`chunks/sec ÷ reference single-thread chunks/sec × 100`. Hashing and encryption weigh half
+(`cpu.kernelWeights`): they swing several-fold on whether the CPU has SHA and AES instructions. So the reference CPU
 scores 100 single-core, about 400 quad-core, and more multi-core.
 
 The headline CPU score is a weighted geometric mean of the three sub-scores,

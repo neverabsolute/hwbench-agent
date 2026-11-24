@@ -7,3 +7,9 @@ rustflags = ["--cfg", "aes_armv8", "--cfg", "polyval_armv8"]
 
 [target.aarch64-unknown-linux-gnu]
 rustflags = ["--cfg", "aes_armv8", "--cfg", "polyval_armv8"]
+
+# Windows on ARM: run-time detection isn't available there, so turn the instructions on at build
+# time. Every Windows-on-ARM PC that has shipped (Snapdragon 7c and later) has the ARMv8 crypto
+# extensions. This covers AES/PMULL (encryption) and SHA-256 (hashing).
+[target.aarch64-pc-windows-msvc]
+rustflags = ["--cfg", "aes_armv8", "--cfg", "polyval_armv8", "-C", "target-feature=+aes,+sha2"]

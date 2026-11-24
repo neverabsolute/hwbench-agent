@@ -15,6 +15,11 @@
       "crypto",
       "parse"
     ],
+    "kernelWeights": {
+      "hash": 0.5,
+      "crypto": 0.5,
+      "note": "Relative weights in each thread count's weighted geometric mean; unlisted kernels weigh 1. Hashing and encryption swing several-fold on whether the CPU has SHA/AES instructions, more than most people's use of them warrants, so they count half (about 5.6% each)."
+    },
     "refChunksPerSec": {
       "hash": 200,
       "compress": 125,
