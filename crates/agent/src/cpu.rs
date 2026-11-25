@@ -1,6 +1,6 @@
 use hwbench_kernels::{Kernel, ShortDigest, run_chained};
 use serde::Serialize;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 #[derive(Serialize, Debug)]
@@ -23,10 +23,17 @@ impl CpuTest {
 
 /// Run `kernel` on `threads` workers for roughly `window`. Each worker runs its own chain of
 /// chunks (lane `n` for worker `n`); each chunk depends on the one before it in the lane.
+///
+/// Only this thread reads the clock: it starts the test, sleeps until the deadline, tells the
+/// workers to stop and measures the elapsed time. On some machines, heavily overclocked ones in
+/// particular, cores' clocks disagree; when each worker checked the deadline on its own core, a
+/// test could come out shorter than its window, which the server rightly treats as untrustworthy.
 pub fn run_test(test_seed: &[u8; 32], kernel: Kernel, threads: usize, window: Duration) -> CpuTest {
+    let stop = AtomicBool::new(false);
     let start = Instant::now();
     let deadline = start + window;
     let lanes: Vec<Vec<ShortDigest>> = std::thread::scope(|s| {
+        let stop = &stop;
         let handles: Vec<_> = (0..threads)
             .map(|lane| {
                 s.spawn(move || {
@@ -34,7 +41,7 @@ pub fn run_test(test_seed: &[u8; 32], kernel: Kernel, threads: usize, window: Du
                     let mut out = Vec::with_capacity(512);
                     let mut prev = [0u8; 8];
                     let mut index = 0u32;
-                    while Instant::now() < deadline {
+                    while !stop.load(Ordering::Relaxed) {
                         prev = run_chained(test_seed, kernel, lane as u32, index, &prev);
                         out.push(prev);
                         index += 1;
@@ -43,6 +50,14 @@ pub fn run_test(test_seed: &[u8; 32], kernel: Kernel, threads: usize, window: Du
                 })
             })
             .collect();
+        loop {
+            let now = Instant::now();
+            if now >= deadline {
+                break;
+            }
+            std::thread::sleep(deadline - now);
+        }
+        stop.store(true, Ordering::Relaxed);
         handles.into_iter().map(|h| h.join().unwrap()).collect()
     });
     let elapsed = start.elapsed();
@@ -129,6 +144,16 @@ pub fn sample_clocks<T>(busy: usize, f: impl FnOnce() -> T) -> (T, Option<(u32, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_lasts_at_least_its_window_on_one_clock() {
+        let window = Duration::from_millis(60);
+        let t = run_test(&[3u8; 32], Kernel::Script, 2, window);
+        assert!(t.elapsed_ns >= window.as_nanos() as u64, "elapsed {} ns", t.elapsed_ns);
+        assert_eq!(t.lanes.len(), 2);
+        assert_eq!(t.chunks as usize, t.lanes.iter().map(|l| l.len() / 16).sum::<usize>());
+        assert!(t.chunks > 0);
+    }
 
     /// The server computes the same commitment (hwbench: src/lib/cpu-commit.ts); keep them in step.
     #[test]
