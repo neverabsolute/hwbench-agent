@@ -1,6 +1,6 @@
-use hwbench_kernels::{Kernel, run_chunk};
+use hwbench_kernels::{Kernel, ShortDigest, run_chained};
 use serde::Serialize;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 #[derive(Serialize, Debug)]
@@ -8,10 +8,11 @@ use std::time::{Duration, Instant};
 pub struct CpuTest {
     pub kernel: &'static str,
     pub threads: usize,
+    /// Chunks completed across all lanes.
     pub chunks: u32,
     pub elapsed_ns: u64,
-    /// First 8 bytes of each chunk digest, hex, in index order.
-    pub digests: String,
+    /// One chain per worker thread, in lane order: the first 8 bytes of each chunk's digest, hex.
+    pub lanes: Vec<String>,
 }
 
 impl CpuTest {
@@ -20,47 +21,44 @@ impl CpuTest {
     }
 }
 
-/// Run `kernel` on `threads` workers for roughly `window`. Chunk indices are
-/// handed out in order, so completed chunks are always exactly `0..chunks`.
-pub fn run_test(seed: &[u8; 32], kernel: Kernel, threads: usize, window: Duration) -> CpuTest {
-    let next = AtomicU32::new(0);
+/// Run `kernel` on `threads` workers for roughly `window`. Each worker runs its own chain of
+/// chunks (lane `n` for worker `n`); each chunk depends on the one before it in the lane.
+pub fn run_test(test_seed: &[u8; 32], kernel: Kernel, threads: usize, window: Duration) -> CpuTest {
     let start = Instant::now();
     let deadline = start + window;
-    let mut all: Vec<(u32, [u8; 8])> = std::thread::scope(|s| {
+    let lanes: Vec<Vec<ShortDigest>> = std::thread::scope(|s| {
         let handles: Vec<_> = (0..threads)
-            .map(|_| {
-                s.spawn(|| {
+            .map(|lane| {
+                s.spawn(move || {
                     crate::qos::full_speed_thread();
-                    let mut local = Vec::with_capacity(512);
+                    let mut out = Vec::with_capacity(512);
+                    let mut prev = [0u8; 8];
+                    let mut index = 0u32;
                     while Instant::now() < deadline {
-                        let i = next.fetch_add(1, Ordering::Relaxed);
-                        let d = run_chunk(seed, kernel, i);
-                        local.push((i, d[..8].try_into().unwrap()));
+                        prev = run_chained(test_seed, kernel, lane as u32, index, &prev);
+                        out.push(prev);
+                        index += 1;
                     }
-                    local
+                    out
                 })
             })
             .collect();
-        handles.into_iter().flat_map(|h| h.join().unwrap()).collect()
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
     });
     let elapsed = start.elapsed();
-    all.sort_unstable_by_key(|(i, _)| *i);
-    debug_assert!(all.iter().enumerate().all(|(n, (i, _))| n as u32 == *i));
-    let mut digests = String::with_capacity(all.len() * 16);
-    for (_, d) in &all {
-        digests.push_str(&crate::util::hex(d));
-    }
-    CpuTest { kernel: kernel.name(), threads, chunks: all.len() as u32, elapsed_ns: elapsed.as_nanos() as u64, digests }
+    let chunks = lanes.iter().map(|l| l.len() as u32).sum();
+    let lanes = lanes.iter().map(|l| l.iter().map(|d| crate::util::hex(d)).collect::<String>()).collect();
+    CpuTest { kernel: kernel.name(), threads, chunks, elapsed_ns: elapsed.as_nanos() as u64, lanes }
 }
 
-/// SHA-256 over every test's kernel, threads, chunks, elapsed time and digests, in order:
-/// `"{kernel}:{threads}:{chunks}:{elapsedNs}:{digests}\n"` per test. Hex.
+/// SHA-256 over every test's kernel, threads, chunks, elapsed time and lanes, in order:
+/// `"{kernel}:{threads}:{chunks}:{elapsedNs}:{lane0},{lane1},…\n"` per test. Hex.
 pub fn commitment(tests: &[CpuTest]) -> String {
     use sha2::{Digest as _, Sha256};
     let mut h = Sha256::new();
     for t in tests {
         h.update(format!("{}:{}:{}:{}:", t.kernel, t.threads, t.chunks, t.elapsed_ns).as_bytes());
-        h.update(t.digests.as_bytes());
+        h.update(t.lanes.join(",").as_bytes());
         h.update(b"\n");
     }
     crate::util::hex(&h.finalize())
@@ -136,9 +134,9 @@ mod tests {
     #[test]
     fn commitment_golden() {
         let tests = [
-            CpuTest { kernel: "hash", threads: 1, chunks: 2, elapsed_ns: 800_000_000, digests: "00112233445566778899aabbccddeeff".into() },
-            CpuTest { kernel: "sort", threads: 4, chunks: 1, elapsed_ns: 801_000_000, digests: "0123456789abcdef".into() },
+            CpuTest { kernel: "hash", threads: 1, chunks: 2, elapsed_ns: 800_000_000, lanes: vec!["00112233445566778899aabbccddeeff".into()] },
+            CpuTest { kernel: "sort", threads: 2, chunks: 1, elapsed_ns: 801_000_000, lanes: vec!["0123456789abcdef".into(), String::new()] },
         ];
-        assert_eq!(commitment(&tests), "a68859c154f5b676ba0659cc9739aca4209fd9852fd050e13557e859e92e0838");
+        assert_eq!(commitment(&tests), "f7983b53501f88aaef4efe09502647e4352c307d6a814fb981abb375a7b22a4b");
     }
 }

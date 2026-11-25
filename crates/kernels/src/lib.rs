@@ -10,6 +10,11 @@
 //! Each CPU test runs under its own seed, [`test_seed`]`(seed, threads)`, so the
 //! chunks computed for one test can't be reported again as another test's.
 //!
+//! From v4, each worker thread of a test runs a chain ("lane"): chunk `i` of a lane runs under
+//! [`chain_seed`], which depends on chunk `i - 1`'s digest. A lane therefore runs at the speed
+//! of one core however many cores are available, and a test claiming `threads` workers can't
+//! have used more. [`verify_lane`] re-runs a whole lane to prove it.
+//!
 //! Outputs must be bit-identical on every platform, so kernels avoid anything
 //! platform-dependent: no `f32`/`f64` transcendental functions, no FMA, no
 //! hash-map iteration order, no `usize`-width-dependent arithmetic.
@@ -20,7 +25,39 @@ mod apps;
 
 /// Bump whenever any kernel's output for a given input changes, or the way seeds are derived.
 /// v3: every CPU test runs under [`test_seed`] instead of the session seed.
-pub const KERNELS_VERSION: u32 = 3;
+/// v4: chunks are chained per worker thread ([`chain_seed`]).
+pub const KERNELS_VERSION: u32 = 4;
+
+/// Reported (and chained on) per chunk: the first 8 bytes of its digest.
+pub type ShortDigest = [u8; 8];
+
+/// The seed chunk `index` of `lane` runs under: derived from the test seed and the previous
+/// chunk's short digest in the same lane (all zeros for the first chunk).
+pub fn chain_seed(test_seed: &[u8; 32], lane: u32, index: u32, prev: &ShortDigest) -> [u8; 32] {
+    let mut h = blake3::Hasher::new_keyed(test_seed);
+    h.update(b"hwbench-chain-v1");
+    h.update(&lane.to_le_bytes());
+    h.update(&index.to_le_bytes());
+    h.update(prev);
+    *h.finalize().as_bytes()
+}
+
+/// Run chunk `index` of `lane`, given the previous chunk's short digest, and return its short digest.
+pub fn run_chained(test_seed: &[u8; 32], kernel: Kernel, lane: u32, index: u32, prev: &ShortDigest) -> ShortDigest {
+    run_chunk(&chain_seed(test_seed, lane, index, prev), kernel, index)[..8].try_into().unwrap()
+}
+
+/// Re-run a whole lane and return the index of the first chunk whose digest differs, if any.
+pub fn verify_lane(test_seed: &[u8; 32], kernel: Kernel, lane: u32, digests: &[ShortDigest]) -> Option<usize> {
+    let mut prev = [0u8; 8];
+    for (i, want) in digests.iter().enumerate() {
+        if run_chained(test_seed, kernel, lane, i as u32, &prev) != *want {
+            return Some(i);
+        }
+        prev = *want;
+    }
+    None
+}
 
 /// The seed a CPU test with `threads` workers runs under, derived from the session seed.
 pub fn test_seed(seed: &[u8; 32], threads: u32) -> [u8; 32] {
@@ -324,6 +361,24 @@ mod tests {
         let seed = [1u8; 32];
         assert_eq!(hex(&test_seed(&seed, 1)), "2ecc3fdab48979d635a8b6ae2db204521910c899428169fc7c45db1bc629102d");
         assert_eq!(hex(&test_seed(&seed, 4)), "9cc087b23214d0cffb7f011fc920a6f4084bf22aabe68f5b7863ee0ad7d5980e");
+    }
+
+    #[test]
+    fn chains() {
+        let ts = test_seed(&[1u8; 32], 4);
+        let lane: Vec<ShortDigest> = (0..5).scan([0u8; 8], |prev, i| {
+            let d = run_chained(&ts, Kernel::Sort, 2, i, prev);
+            *prev = d;
+            Some(d)
+        }).collect();
+        assert_eq!(verify_lane(&ts, Kernel::Sort, 2, &lane), None);
+        // Another lane's chain, or a chunk computed from the wrong predecessor, doesn't verify.
+        assert_eq!(verify_lane(&ts, Kernel::Sort, 1, &lane), Some(0));
+        let mut spliced = lane.clone();
+        spliced[3] = run_chained(&ts, Kernel::Sort, 2, 3, &[9u8; 8]);
+        assert_eq!(verify_lane(&ts, Kernel::Sort, 2, &spliced), Some(3));
+        assert_eq!(hex(&chain_seed(&ts, 0, 0, &[0u8; 8])), "fb5b581ee40b72322fd94b4115ecbe39f876e239d452bdcf3313bea96a241448");
+        assert_eq!(hex(&lane[4]), "dbfb40837b95d014");
     }
 
     fn hex(b: &[u8]) -> String {
