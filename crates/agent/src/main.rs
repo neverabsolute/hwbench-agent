@@ -323,6 +323,8 @@ fn main() {
 
     if args.dry_run {
         if args.json {
+            // The made-up seed, so the proofs can be checked offline (hwbench-verify).
+            body["dryRunSeed"] = serde_json::json!(util::hex(&seed));
             println!("{}", serde_json::to_string_pretty(&body).unwrap());
         }
         println!("\n--dry-run: nothing was submitted.");

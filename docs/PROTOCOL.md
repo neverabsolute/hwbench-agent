@@ -21,7 +21,7 @@ Sessions expire after 30 minutes and are rate limited per IP.
 
 ```
 POST /api/v1/sessions/{code}/claim
-{ "protocol": 1, "agentVersion": "0.7.0", "kernelsVersion": 3, "os": "linux", "arch": "x86_64" }
+{ "protocol": 1, "agentVersion": "0.8.0", "kernelsVersion": 4, "os": "linux", "arch": "x86_64" }
 → 200 {
   "seed": "<64 hex chars>",
   "selection": ["cpu", "ram"],
@@ -33,7 +33,7 @@ POST /api/v1/sessions/{code}/claim
 ```
 
 A session can be claimed once. `threads: 0` means "all logical processors".
-The server answers `426` to agents older than 0.7.0 or with another `kernelsVersion`.
+The server answers `426` to agents older than 0.8.0 or with another `kernelsVersion`.
 The seed only exists from this point on, so proofs cannot be precomputed.
 
 ## 3. Commit to the CPU results (0.7+)
@@ -47,7 +47,7 @@ POST /api/v1/sessions/{code}/cpu
 → 200 { "ok": true }
 ```
 
-The commitment is SHA-256 over `"{kernel}:{threads}:{chunks}:{elapsedNs}:{digests}\n"`
+The commitment is SHA-256 over `"{kernel}:{threads}:{chunks}:{elapsedNs}:{lane0},{lane1},…\n"`
 for each test, in the order they are submitted. The server records when it
 arrived. The time from the claim to the commitment is the CPU phase on the
 server's clock: the tests' `elapsedNs` must fit in it, and it must not be much
@@ -60,7 +60,7 @@ run reports). The submission's CPU section must match the commitment.
 POST /api/v1/sessions/{code}/submit
 {
   "protocol": 1,
-  "agent": { "version": "0.7.0", "kernelsVersion": 3, "target": "x86_64-unknown-linux-gnu" },
+  "agent": { "version": "0.8.0", "kernelsVersion": 4, "target": "x86_64-unknown-linux-gnu" },
   "deviceId": "<hex>",          // salted hash of a stable machine id; never the raw id
   "system": {
     …os, cpu, memory and drives; see crates/agent/src/system.rs…
@@ -75,8 +75,8 @@ POST /api/v1/sessions/{code}/submit
   },
   "cpu": {
     "tests": [
-      { "kernel": "hash", "threads": 1, "chunks": 291, "elapsedNs": 1503000000,
-        "digests": "<chunks × 16 hex chars>" }
+      { "kernel": "hash", "threads": 4, "chunks": 1164, "elapsedNs": 801000000,
+        "lanes": ["<16 hex chars per chunk>", …] }        // one per thread (0.8+)
     ],
     "clocks": { "singleMaxMhz": 5602, "allCoreMhz": 5150 }   // optional, Linux only (Windows 0.5.0 sent unreliable readings; servers ignore them)
   },
@@ -120,17 +120,33 @@ name, such as the RTX 3060 8 GB and 12 GB.
 
 ### CPU proofs
 
-For each test, chunk indices `0..chunks` are handed out to worker threads in
-order. Each chunk `i` produces `hwbench_kernels::run_chunk(test_seed, kernel, i)`,
-and the first 8 bytes of every digest are concatenated in index order.
-`test_seed` is `hwbench_kernels::test_seed(seed, threads)` (kernels v3+), so
-the chunks computed for one test can't be reported as another test's.
+Each test runs under `test_seed = hwbench_kernels::test_seed(seed, threads)`
+(kernels v3+), so the chunks computed for one test can't be reported as another
+test's.
 
-The server re-runs a random sample of chunks with the same kernel code compiled
-to WebAssembly. If any digest differs, the run is rejected. This proves the
-work was done for this session's seed. It cannot prove how fast it was done,
-so timing goes through the statistical checks described in
-[METHODOLOGY.md](METHODOLOGY.md).
+From kernels v4 (agent 0.8), each worker thread runs a chain of chunks, its
+*lane*. Chunk `i` of lane `l` is
+`hwbench_kernels::run_chained(test_seed, kernel, l, i, prev)`, where `prev` is
+the first 8 bytes of chunk `i - 1`'s digest in the same lane (zeros for the
+first). `lanes[l]` holds those 8-byte digests in order, as hex. Because every
+chunk needs the one before it, a lane runs at the speed of one core: a test
+can't have used more cores than its `threads`.
+
+The server checks proofs after the CPU commitment, so the agent can't know in
+advance which chunks it will pick:
+
+* Spot checks: a random sample of chunks in every test, each re-run from the
+  predecessor the agent reported.
+* Full lanes: whole lanes re-run from the start, for two randomly chosen
+  single-thread kernels and one random lane of one four-thread kernel. A lane
+  stitched together from pieces computed in parallel has a break where the
+  pieces join, and only re-running the whole lane finds it.
+
+Checks run natively with `hwbench-verify` (`crates/verifier`), released with
+the agent with build provenance. If any chunk differs, the run is rejected.
+This proves the work was done, for this seed, by no more threads than the run
+reports. It can't prove which CPU did it, so the model a run reports goes
+through the statistical checks in [METHODOLOGY.md](METHODOLOGY.md).
 
 ## Versioning
 

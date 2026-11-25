@@ -1,9 +1,9 @@
 [workspace]
 resolver = "3"
-members = ["crates/kernels", "crates/kernels-wasm", "crates/agent"]
+members = ["crates/kernels", "crates/kernels-wasm", "crates/agent", "crates/verifier"]
 
 [workspace.package]
-version = "0.7.0"
+version = "0.8.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/neverabsolute/hwbench-agent"

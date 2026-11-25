@@ -1,0 +1,12 @@
+[package]
+name = "hwbench-verify"
+description = "Server-side checker for hwbench CPU proofs: re-runs chained chunks natively."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+hwbench-kernels.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

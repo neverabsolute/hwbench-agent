@@ -155,8 +155,10 @@ a run with every accepted result for the same model.
 ## Checking results
 
 * CPU results include per-chunk digests for a seed the server issues, with a
-  different seed for each test. The server re-runs a random sample of chunks and
-  rejects runs whose digests don't match.
+  different seed for each test. Each thread's chunks form a chain, so a test can't
+  use more cores than it reports. The server re-runs a random sample of chunks and
+  whole chains for a few tests it picks after the run, and rejects runs that don't
+  match.
 * The agent commits to its CPU results the moment the CPU tests finish. The tests'
   reported times must fit in the CPU phase on the server's clock, and runs whose CPU
   phase took much longer than they report are held for review.
